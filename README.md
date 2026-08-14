@@ -323,6 +323,28 @@ Three related traps, all encoded in the code:
 
 ---
 
+## Web UI
+
+```bash
+.venv/bin/python webapp/app.py                 # http://127.0.0.1:5000
+.venv/bin/python webapp/app.py --host 0.0.0.0  # reachable from other machines
+```
+
+A small Flask front end over the same library: run a scan, run tagging, and make
+playlists. Results show as a grid of cover art pulled straight out of the files
+(98% of this library carries embedded artwork).
+
+**A playlist is not stored — it is derived from a saved query plus a seed**, and
+the URL carries both (`/playlist/42?seed=7007`). That one decision gives three
+things for free: *Another take* re-rolls instantly with no second model call,
+every playlist URL is reproducible and shareable, and the server keeps no
+per-user state at all. *Rethink* is the separate, slower button that asks the
+model to read the same words again from scratch.
+
+Scanning and tagging run in a worker thread and the page polls for progress —
+which is read back out of the database rather than pushed from the worker, so the
+web UI and `run.py stats` cannot disagree.
+
 ## Measuring playlist quality
 
 ```bash
@@ -345,7 +367,7 @@ ignored.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 74 passed
+.venv/bin/python -m pytest tests/ -q      # 75 passed
 ```
 
 The scan tests exercise every row of the identity table against real files in a

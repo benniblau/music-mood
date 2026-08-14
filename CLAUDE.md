@@ -100,6 +100,23 @@ moodlib/
 └── cli.py             argument parsing + dispatch
 ```
 
+## The web UI
+
+`webapp/` is a thin Flask front end. Keep it thin: every route should be a call
+into `moodlib` plus a template render. Logic that lands here instead of in
+`moodlib` is logic the CLI and the eval harness will not have.
+
+The design decision worth preserving: **a playlist is derived, never stored.**
+`/playlist/<query_id>?seed=N` re-scores from the saved translation in the
+`queries` table, so a re-roll costs no model call, every URL is reproducible, and
+there is no session state. Adding a `playlists` table would break all three.
+
+Styling comes from `../ui-template` (Bootstrap 5.3 + the shared `custom.css`);
+`webapp/static/css/app.css` holds only what the track grid needs. The track
+index and confidence badges carry their own translucent dark background because
+they sit on cover art, which is arbitrary user imagery — do not assume a
+readable backdrop.
+
 ## Invariants the tests enforce
 
 Breaking any of these fails the suite. They are asserted rather than documented

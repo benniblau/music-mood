@@ -290,6 +290,12 @@ def _recording(item: Scored) -> tuple[str, str]:
     """
     def clean(text: str) -> str:
         text = (text or "").translate(_PUNCTUATION).lower()
+        # Drop apostrophes rather than normalising them. Taggers disagree about
+        # whether the word is "don't", "don’t" or "dont", and the same David
+        # Guetta single sat at positions 10 and 11 of one playlist for exactly
+        # that reason -- same artist, same 3:46, same artwork. An apostrophe
+        # never distinguishes two different recordings.
+        text = text.replace("'", "")
         return " ".join(_FEATURING.sub(" ", text).split())
 
     artist = clean(item.artist)

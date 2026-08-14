@@ -1,0 +1,81 @@
+/* Additions on top of the shared theme (css/custom.css).
+   Only what the track grid needs — everything else comes from the template. */
+
+.stat-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--theme-text);
+}
+
+.stat-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--theme-text-muted);
+}
+
+/* ─── Track cards ─── */
+.track-card {
+    overflow: hidden;
+}
+
+.track-cover {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: var(--theme-surface-light);
+    overflow: hidden;
+}
+
+.track-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Cover art is arbitrary user imagery, so the overlays need their own contrast
+   rather than relying on the artwork behind them being dark. */
+.track-index,
+.track-confidence {
+    position: absolute;
+    top: 0.35rem;
+    font-size: 0.7rem;
+    line-height: 1;
+    padding: 0.2rem 0.4rem;
+    border-radius: 6px;
+    background: rgba(5, 5, 10, 0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: #fff;
+    font-weight: 600;
+}
+
+.track-index { left: 0.35rem; }
+.track-confidence { right: 0.35rem; background: rgba(5, 5, 10, 0.5); }
+
+.track-title,
+.track-artist {
+    /* Titles and artist names are long and arbitrary; one line each keeps the
+       grid even, and the full text is on the title attribute. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.track-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--theme-text);
+}
+
+.track-artist {
+    font-size: 0.76rem;
+    color: var(--theme-text-muted);
+}
+
+.track-meta {
+    font-size: 0.7rem;
+    color: var(--theme-text-muted);
+    opacity: 0.75;
+}

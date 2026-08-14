@@ -367,3 +367,19 @@ def test_an_explicit_genre_flag_is_never_second_guessed(conn):
 def test_a_genre_alone_is_untouched(conn):
     limits = query.constraints({"genres": ["Hip Hop"], "styles": []})
     assert limits["genres"] == ("Hip Hop",)
+
+
+def test_a_missing_apostrophe_is_still_the_same_recording(conn):
+    """Seen in the web UI at positions 10 and 11 of one playlist.
+
+    Same artist, same 3:46, same artwork — the taggers simply disagreed about
+    whether the word is "don't", "don’t" or "dont".
+    """
+    add_track(conn, "a.m4a", artist="David Guetta Vs The Egg",
+              title="Love Dont Let Me Go (Walking Away)")
+    add_track(conn, "b.m4a", artist="David Guetta Vs The Egg",
+              title="Love Don'T Let Me Go (Walking Away)")
+    add_track(conn, "c.m4a", artist="David Guetta Vs The Egg",
+              title="Love Don’t Let Me Go (Walking Away)")
+    scored = query.score_all(conn, {"energy": axis(50)})
+    assert len(query.select(scored, count=5, max_per_artist=5, seed=1)) == 1

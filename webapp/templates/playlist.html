@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — Music Mood{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <a href="{{ url_for('index') }}" class="text-muted small text-decoration-none">
+            <i class="bi bi-arrow-left me-1"></i> Back
+        </a>
+        <h1 class="hub-section-title mt-2 mb-1" style="font-size: 1.75rem;">{{ title }}</h1>
+        <p class="text-muted small mb-0">
+            “{{ text }}” &middot; {{ tracks|length }} tracks &middot;
+            {{ (total_seconds / 60)|round|int }} min &middot;
+            from {{ '{:,}'.format(candidates) }} candidates
+        </p>
+    </div>
+
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary btn-sm"
+           href="{{ url_for('show_playlist', query_id=query_id, n=count, seed=range(1, 10000)|random) }}">
+            <i class="bi bi-shuffle me-1"></i> Another take
+        </a>
+        <form method="post" action="{{ url_for('rethink', query_id=query_id) }}">
+            <button class="btn btn-outline-primary btn-sm" type="submit"
+                    title="Ask the model to read the same words again from scratch">
+                <i class="bi bi-arrow-clockwise me-1"></i> Rethink
+            </button>
+        </form>
+        <a class="btn btn-outline-secondary btn-sm"
+           href="{{ url_for('export_playlist', query_id=query_id, n=count, seed=seed) }}">
+            <i class="bi bi-download me-1"></i> .m3u8
+        </a>
+    </div>
+</div>
+
+{% if structured.rationale %}
+    <div class="alert alert-info py-2 px-3 small mb-3">
+        <i class="bi bi-robot me-1"></i> {{ structured.rationale }}
+    </div>
+{% endif %}
+
+{% if limits.genres or limits.styles or limits.year_from or limits.min_confidence %}
+    <div class="mb-3 d-flex gap-1 flex-wrap align-items-center">
+        <span class="text-muted small me-1">Filtered to</span>
+        {% for name in limits.styles %}<span class="tag-badge">{{ name }}</span>{% endfor %}
+        {% for name in limits.genres %}<span class="tag-badge">{{ name }}</span>{% endfor %}
+        {% if limits.year_from or limits.year_to %}
+            <span class="tag-badge">{{ limits.year_from or '…' }}–{{ limits.year_to or '…' }}</span>
+        {% endif %}
+        {% if limits.min_confidence %}
+            <span class="tag-badge">well-known only</span>
+        {% endif %}
+    </div>
+{% endif %}
+
+{% if tracks %}
+    <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-xl-6 g-3">
+        {% for track in tracks %}
+            <div class="col">
+                <div class="card skill-card h-100 track-card">
+                    <div class="track-cover">
+                        {% if track.id %}
+                            <img src="{{ url_for('cover', track_id=track.id) }}"
+                                 alt="" loading="lazy">
+                        {% endif %}
+                        <span class="track-index">{{ loop.index }}</span>
+                        {# Confidence: what the model actually knew about this track. #}
+                        <span class="track-confidence"
+                              title="{{ ['inferred from the genre tag', 'knows the artist', 'knows this recording'][track.confidence] }}">
+                            {{ ['❓', '👤', '🎯'][track.confidence] }}
+                        </span>
+                    </div>
+                    <div class="card-body p-2">
+                        <div class="track-title" title="{{ track.title }}">{{ track.title }}</div>
+                        <div class="track-artist" title="{{ track.artist }}">{{ track.artist }}</div>
+                        <div class="track-meta">
+                            {{ track.duration|clock }}{% if track.year %} &middot; {{ track.year }}{% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="card"><div class="card-body text-center py-5">
+        <div class="display-4 text-muted mb-2"><i class="bi bi-search"></i></div>
+        <p class="text-muted mb-0">Nothing matched. Try a looser description.</p>
+    </div></div>
+{% endif %}
+{% endblock %}

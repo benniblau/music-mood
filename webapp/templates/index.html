@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hub-hero text-center mb-4">
+    <div class="hub-hero-eyebrow"><span class="hub-hero-dot"></span> {{ '{:,}'.format(counts.tagged) }} tracks ready</div>
+    <h1 class="hub-hero-title">
+        <span class="hub-hero-title-main">How do you want to</span>
+        <span class="word-rotator">
+            <span class="word-rotator-item active">feel?</span>
+            <span class="word-rotator-item">unwind?</span>
+            <span class="word-rotator-item">train?</span>
+            <span class="word-rotator-item">focus?</span>
+        </span>
+    </h1>
+    <p class="hub-hero-sub">
+        Describe a mood, a moment, a genre — anything you would say to a friend
+        with good taste.
+    </p>
+
+    <form class="hub-search-form" method="post" action="{{ url_for('create_playlist') }}">
+        <div class="hub-search-bar">
+            <i class="bi bi-search hub-search-icon"></i>
+            <input class="hub-search-input" type="text" name="mood" autofocus
+                   placeholder="rainy sunday morning, a bit wistful"
+                   {% if not counts.tagged %}disabled{% endif %}>
+            <select class="hub-search-select" name="count">
+                <option value="20">20 tracks</option>
+                <option value="40" selected>40 tracks</option>
+                <option value="60">60 tracks</option>
+            </select>
+            <button class="hub-search-btn" type="submit"
+                    {% if not counts.tagged %}disabled{% endif %}>Create</button>
+        </div>
+        <div class="form-text mt-2">
+            Try “old-school legendary hip hop”, “ambient drum n bass, feeling blue”,
+            or “high intensity workout”.
+        </div>
+    </form>
+</section>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="hub-section-title mb-3">
+                    <i class="bi bi-vinyl me-1"></i> Library
+                </h2>
+                <p class="text-muted small mb-3"><code>{{ library }}</code></p>
+
+                <div class="progress mb-3" style="height: 8px;">
+                    {% set pct = (100 * counts.tagged / counts.tracks) if counts.tracks else 0 %}
+                    <div class="progress-bar" id="tag-progress" role="progressbar"
+                         style="width: {{ pct }}%; background: var(--theme-gradient);"></div>
+                </div>
+
+                <div class="row text-center g-2 mb-3">
+                    <div class="col"><div class="stat-value" id="stat-tracks">{{ '{:,}'.format(counts.tracks) }}</div><div class="stat-label">tracks</div></div>
+                    <div class="col"><div class="stat-value" id="stat-tagged">{{ '{:,}'.format(counts.tagged) }}</div><div class="stat-label">tagged</div></div>
+                    <div class="col"><div class="stat-value" id="stat-pending">{{ '{:,}'.format(counts.pending) }}</div><div class="stat-label">to tag</div></div>
+                    <div class="col"><div class="stat-value">{{ '{:,}'.format(counts.missing) }}</div><div class="stat-label">missing</div></div>
+                </div>
+
+                <div id="job-panel" class="d-none alert alert-info py-2 px-3 mb-3 small">
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                    <span id="job-text">working…</span>
+                </div>
+
+                <div class="d-flex gap-2 flex-wrap">
+                    <form method="post" action="{{ url_for('start_job', name='scan') }}">
+                        <button class="btn btn-outline-primary btn-sm job-btn" type="submit">
+                            <i class="bi bi-arrow-repeat me-1"></i> Scan library
+                        </button>
+                    </form>
+                    <form method="post" action="{{ url_for('start_job', name='tag') }}">
+                        <button class="btn btn-primary btn-sm job-btn" type="submit"
+                                {% if not counts.pending %}disabled{% endif %}>
+                            {% if counts.pending %}
+                                <i class="bi bi-magic me-1"></i>
+                                Tag {{ '{:,}'.format(counts.pending) }} tracks
+                            {% else %}
+                                <i class="bi bi-check2 me-1"></i> Everything tagged
+                            {% endif %}
+                        </button>
+                    </form>
+                </div>
+                <div class="form-text mt-2">
+                    Scanning finds new and moved files. Tagging characterises what
+                    is new or changed — roughly one track a second.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="hub-section-title mb-3"><i class="bi bi-clock-history me-1"></i> Recent</h2>
+                {% if recent %}
+                    <div class="list-group list-group-flush">
+                        {% for item in recent %}
+                            <a class="list-group-item list-group-item-action bg-transparent px-0 py-2 border-0"
+                               href="{{ url_for('show_playlist', query_id=item.id) }}">
+                                <i class="bi bi-arrow-return-right me-1 text-muted"></i>
+                                {{ item.text }}
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted small mb-0">Nothing yet — describe a mood above.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Poll while a scan or tag runs. Progress is read from the database rather than
+// pushed from the worker, so the numbers here and in `stats` cannot disagree.
+(function () {
+    var panel = document.getElementById('job-panel');
+    var text  = document.getElementById('job-text');
+    var timer = null;
+
+    function render(s) {
+        if (s.idle || !s.running) {
+            panel.classList.add('d-none');
+            if (timer && !s.idle) { clearInterval(timer); timer = null; location.reload(); }
+            return;
+        }
+        panel.classList.remove('d-none');
+        document.querySelectorAll('.job-btn').forEach(function (b) { b.disabled = true; });
+
+        var mins = Math.floor(s.elapsed / 60), secs = Math.floor(s.elapsed % 60);
+        var label = s.name === 'tag' ? 'Tagging' : 'Scanning';
+        if (s.name === 'tag' && s.target) {
+            var pct = Math.round(100 * s.done / s.target);
+            var rate = s.done / Math.max(s.elapsed, 1);
+            var left = rate > 0 ? Math.round((s.target - s.done) / rate / 60) : null;
+            label += ' ' + s.done.toLocaleString() + ' / ' + s.target.toLocaleString() +
+                     ' (' + pct + '%)' + (left !== null ? ' — about ' + left + ' min left' : '');
+            document.getElementById('tag-progress').style.width =
+                (100 * s.counts.tagged / Math.max(s.counts.tracks, 1)) + '%';
+            document.getElementById('stat-tagged').textContent = s.counts.tagged.toLocaleString();
+            document.getElementById('stat-pending').textContent =
+                (s.counts.never_tagged + s.counts.stale_content +
+                 s.counts.stale_ontology + s.counts.errors).toLocaleString();
+        } else {
+            label += ' — ' + mins + 'm ' + secs + 's';
+        }
+        text.textContent = label;
+    }
+
+    function poll() {
+        fetch('{{ url_for("job_status") }}')
+            .then(function (r) { return r.json(); })
+            .then(render)
+            .catch(function () { /* transient; the next tick retries */ });
+    }
+
+    poll();
+    timer = setInterval(poll, 2000);
+})();
+</script>
+{% endblock %}
