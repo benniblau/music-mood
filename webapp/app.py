@@ -335,6 +335,10 @@ def _api_payload(conn, query_id: int, structured: dict, seed: int, count: int):
         "query_id": query_id,
         "seed": seed,
         "title": structured.get("title") or "Playlist",
+        # The model's own account of how it read the request. `--explain` and the
+        # CLI already surface it; a client that waited ~15s for the call has more
+        # use for it than either.
+        "rationale": (structured.get("rationale") or "").strip(),
         "count": len(tracks),
         "tracks": tracks,
         "page_url": url_for("show_playlist", query_id=query_id, seed=seed,

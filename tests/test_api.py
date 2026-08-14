@@ -176,6 +176,23 @@ def test_a_playlist_reads_back_identically_without_a_model_call(client, tmp_path
     assert read["text"] == "x"
 
 
+def test_the_response_carries_the_models_rationale(client, tmp_path, monkeypatch):
+    # A caller that waited ~15s on the model has more use for its reading of the
+    # request than the CLI does, and the field is already in the schema.
+    library(tmp_path / "api.sqlite3")
+    translation(monkeypatch, rationale="Slow, warm, low energy; leaning nostalgic.")
+    body = client.post("/api/playlist", json={"mood": "x"}).get_json()
+    assert body["rationale"] == "Slow, warm, low energy; leaning nostalgic."
+
+
+def test_a_missing_rationale_is_an_empty_string_not_null(client, tmp_path,
+                                                         monkeypatch):
+    # Clients render this straight into a label; None would print "None".
+    library(tmp_path / "api.sqlite3")
+    translation(monkeypatch)
+    assert client.post("/api/playlist", json={"mood": "x"}).get_json()["rationale"] == ""
+
+
 def test_every_track_carries_cover_art(client, tmp_path, monkeypatch):
     library(tmp_path / "api.sqlite3")
     translation(monkeypatch)

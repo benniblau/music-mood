@@ -373,6 +373,7 @@ other case — a home automation system that wants to describe a mood and hear i
 ```
 POST /api/playlist          {"mood": "...", "count": 40, "seed": 7}
   -> {"query_id": 42, "seed": 7, "title": "Rainy Morning Wistfulness",
+      "rationale": "Slow, warm, low energy; leaning nostalgic.",
       "count": 40, "page_url": "...",
       "tracks": [{"url": ..., "cover": ..., "artist": ..., "title": ...}]}
 
