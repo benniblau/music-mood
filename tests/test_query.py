@@ -307,3 +307,63 @@ def test_a_pure_mood_request_filters_nothing(conn):
     limits = query.constraints({"genres": [], "styles": [], "min_confidence": 0})
     assert limits["genres"] == () and limits["styles"] == ()
     assert limits["min_confidence"] == 0
+
+
+def test_the_same_recording_credited_differently_is_one_track(conn):
+    """Observed live: one playlist carried Gangsta's Paradise twice.
+
+        Coolio & L.V.  /  Gangsta’s Paradise             (curly apostrophe)
+        Coolio         /  Gangsta's Paradise (feat. L.V.)
+
+    Three differences at once — collaborator placement, typographic apostrophe,
+    and 4s of duration from a different rip.
+    """
+    add_track(conn, "a.m4a", artist="Coolio & L.V.", title="Gangsta’s Paradise")
+    add_track(conn, "b.m4a", artist="Coolio", title="Gangsta's Paradise (feat. L.V.)")
+    scored = query.score_all(conn, {"energy": axis(50)})
+    assert len(query.select(scored, count=5, max_per_artist=5, seed=1)) == 1
+
+
+def test_versions_are_still_distinct(conn):
+    # The dedupe must not swallow genuinely different recordings.
+    add_track(conn, "a.m4a", artist="Incubus", title="Drive")
+    add_track(conn, "b.m4a", artist="Incubus", title="Drive (Acoustic)")
+    assert len(query.select(query.score_all(conn, {"energy": axis(50)}),
+                            count=5, max_per_artist=5, seed=1)) == 2
+
+
+def test_different_artists_sharing_a_title_are_distinct(conn):
+    add_track(conn, "a.m4a", artist="Incubus", title="Drive")
+    add_track(conn, "b.m4a", artist="R.E.M.", title="Drive")
+    assert len(query.select(query.score_all(conn, {"energy": axis(50)}),
+                            count=5, max_per_artist=5, seed=1)) == 2
+
+
+def test_a_genre_that_describes_the_style_is_dropped(conn):
+    """"jazzy house" is House with a jazzy feel, not House-or-Jazz.
+
+    The model files the modifier as a genre, and OR-ing it in returns jazz-funk
+    and acid jazz records ahead of the house the request was about. Jazz does not
+    parent House, so the taxonomy itself says which is the subject.
+    """
+    limits = query.constraints({"genres": ["Jazz"], "styles": ["House"]})
+    assert limits["genres"] == ()
+    assert limits["styles"] == ("House",)
+
+
+def test_a_genre_that_contains_the_style_is_kept(conn):
+    # The hierarchy case: "hip hop, of the boom bap kind" must still return all
+    # hip hop, not just boom bap.
+    limits = query.constraints({"genres": ["Hip Hop"], "styles": ["Boom Bap"]})
+    assert limits["genres"] == ("Hip Hop",)
+    assert limits["styles"] == ("Boom Bap",)
+
+
+def test_an_explicit_genre_flag_is_never_second_guessed(conn):
+    limits = query.constraints({"genres": [], "styles": ["House"]}, genres=["Jazz"])
+    assert limits["genres"] == ("Jazz",)
+
+
+def test_a_genre_alone_is_untouched(conn):
+    limits = query.constraints({"genres": ["Hip Hop"], "styles": []})
+    assert limits["genres"] == ("Hip Hop",)

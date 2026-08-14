@@ -8,6 +8,7 @@ playlist comes back instantly and costs nothing to re-roll.
 from __future__ import annotations
 
 import json
+import re
 import random
 from dataclasses import dataclass, field
 from typing import Sequence
@@ -169,14 +170,42 @@ def constraints(query: dict, *, min_confidence: int | None = None,
             return None
         return str(year) if 1900 < year < 2100 else None
 
+    chosen_genres = tuple(genres) or tuple(query.get("genres") or ())
+    chosen_styles = tuple(styles) or tuple(query.get("styles") or ())
+    if not genres:                       # never second-guess an explicit flag
+        chosen_genres = _drop_modifier_genres(chosen_genres, chosen_styles)
+
     return {
-        "genres": tuple(genres) or tuple(query.get("genres") or ()),
-        "styles": tuple(styles) or tuple(query.get("styles") or ()),
+        "genres": chosen_genres,
+        "styles": chosen_styles,
         "year_from": year_from or clamp_year(query.get("year_from")),
         "year_to": year_to or clamp_year(query.get("year_to")),
         "min_confidence": (min_confidence if min_confidence is not None
                            else int(query.get("min_confidence") or 0)),
     }
+
+
+def _drop_modifier_genres(genres: Sequence[str], styles: Sequence[str]
+                          ) -> tuple[str, ...]:
+    """Discard a genre that describes the styles rather than containing them.
+
+    Genre and style are OR-ed, which is right when they are a hierarchy -- "hip
+    hop, of the boom bap and g-funk kinds" should return all hip hop. It is
+    wrong when the genre is a *modifier*: "jazzy house" comes back as genre Jazz
+    plus style House, and OR-ing those returns House **or** Jazz, so jazz-funk
+    and acid jazz records outrank the house the request was actually about.
+
+    The taxonomy already knows which case this is. A genre that parents one of
+    the listed styles is a container and stays; one that parents none of them is
+    describing them, and the styles are the real subject. Prompting alone did not
+    fix this reliably -- the model kept filing the modifier as a genre -- but the
+    hierarchy makes it decidable rather than a matter of phrasing.
+    """
+    if not styles or not genres:
+        return tuple(genres)
+    parents = {ontology.genre_for_style(style) for style in styles}
+    containers = tuple(genre for genre in genres if genre in parents)
+    return containers
 
 
 def score_all(conn, query: dict, *, min_confidence: int = 0,
@@ -215,6 +244,15 @@ def score_all(conn, query: dict, *, min_confidence: int = 0,
     return results
 
 
+#: Featuring credits, wherever the tagger put them. The same recording is
+#: routinely filed as `Coolio & L.V. — Gangsta's Paradise` and
+#: `Coolio — Gangsta's Paradise (feat. L.V.)`.
+_FEATURING = re.compile(
+    r"[\(\[]?\s*\b(?:feat|ft|featuring|with)\b\.?\s+[^\)\]]*[\)\]]?", re.I)
+_PUNCTUATION = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"',
+                              "–": "-", "—": "-"})
+
+
 def _recording(item: Scored) -> tuple[str, str]:
     """Identity of the *recording*, for keeping a playlist free of repeats.
 
@@ -223,12 +261,33 @@ def _recording(item: Scored) -> tuple[str, str]:
     and Music re-adding a track it already had. Those score identically, so
     without this a playlist happily lists "Modestep — Sunlight" twice in a row.
 
-    Deliberately an exact normalised match on artist+title: "Drive" and
-    "Drive (Acoustic)" are different recordings and both may legitimately
-    appear, so no suffix-stripping cleverness here.
+    An exact artist+title match is not enough, because the same recording gets
+    credited differently. Observed live, one playlist carried both:
+
+        Coolio & L.V.  /  Gangsta’s Paradise            (curly apostrophe)
+        Coolio         /  Gangsta's Paradise (feat. L.V.)
+
+    -- three differences at once: where the collaborator is credited, the
+    apostrophe, and 4s of duration from a different rip. So the key normalises
+    typographic punctuation, drops featuring credits from both fields, and takes
+    only the artist's leading token, since that is the part that survives every
+    way of writing a collaboration.
+
+    Still deliberately conservative about *versions*: "Drive" and
+    "Drive (Acoustic)" keep different keys and may both appear, because they are
+    genuinely different recordings.
     """
-    normalise = lambda text: " ".join((text or "").lower().split())
-    return normalise(item.artist), normalise(item.title)
+    def clean(text: str) -> str:
+        text = (text or "").translate(_PUNCTUATION).lower()
+        return " ".join(_FEATURING.sub(" ", text).split())
+
+    artist = clean(item.artist)
+    # Leading token only: "coolio & l.v." and "coolio" must agree. Collapsing a
+    # band name like "simon & garfunkel" to "simon" is the cost, and it only
+    # bites if another act whose name starts the same way has an identically
+    # titled track -- rarer than the credit variation this fixes.
+    lead = artist.split(" & ")[0].split(",")[0].strip()
+    return lead or artist, clean(item.title)
 
 
 def select(scored: list[Scored], count: int, max_per_artist: int,

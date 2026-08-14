@@ -177,10 +177,25 @@ costs seconds.
    This matters more than it sounds. *"old-school legendary hip hop"* once
    returned Pavement, Bloc Party and Arctic Monkeys: with nowhere to put "hip
    hop", only the mood residue survived, and groovy-nostalgic-mid-energy
-   describes indie rock just as well as it describes Rakim. Genre and style are
-   **OR-ed**, not AND-ed — a style already implies its genre, so intersecting
-   them would exclude the very tracks the genre was named to include. A purely
-   mood-based request sets no filters at all.
+   describes indie rock just as well as it describes Rakim. A purely mood-based
+   request sets no filters at all.
+
+   **Genre words are not always alternatives.** Getting this right took three
+   passes, because the same two fields mean different things:
+
+   | Request | Reading | Filter |
+   | --- | --- | --- |
+   | "jungle or breakbeat" | alternatives | Jungle **or** Breakbeat |
+   | "hip hop, boom bap kind" | hierarchy — a style implies its genre | all Hip Hop |
+   | "ambient drum and bass" | compound — *ambient* modifies *d&b* | Drum n Bass, "ambient" via the mood axes |
+   | "jazzy house" | compound, modifier filed as a genre | House |
+
+   The first two are OR-ed. The compounds are not: listing the modifier as a
+   second style asks for either one, and the modifier usually wins — *"ambient
+   drum and bass"* returned Bonobo and Apparat and no drum & bass at all. The
+   prompt handles the style case; the genre case is caught structurally, because
+   the taxonomy knows `Jazz` does not parent `House`, so it must be describing
+   it rather than containing it.
 2. **Score** — locally, over SQLite:
    ```
    axis_fit  = Σ w·(1 − |track − target|)      / Σ w
@@ -311,7 +326,7 @@ Three related traps, all encoded in the code:
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 67 passed
+.venv/bin/python -m pytest tests/ -q      # 74 passed
 ```
 
 The scan tests exercise every row of the identity table against real files in a

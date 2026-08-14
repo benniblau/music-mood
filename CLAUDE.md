@@ -21,7 +21,7 @@ re-execs under `.venv` if the calling interpreter lacks the dependencies, so
 tests, which skip themselves without it. **Run the suite before trusting a change** — most
 of these tests exist because something already went wrong once.
 
-## Seven things that will bite you
+## Eight things that will bite you
 
 Each of these cost a real debugging session. They are counter-intuitive, so
 inherited assumptions are more dangerous here than ignorance.
@@ -65,7 +65,16 @@ on this library, with both agreeing on every raw field including the freeform
 exactly what a generic reader drops, so `_musical_key` searches key names rather
 than assuming a spelling.
 
-**7. A request is not always a mood.** The query schema carries `genres`,
+**7. Genre words can be alternatives, a hierarchy, or a compound.** All three
+arrive in the same two fields. "jungle or breakbeat" is alternatives and "hip
+hop, boom bap kind" is a hierarchy — both OR. "ambient drum and bass" and "jazzy
+house" are compounds, where one word modifies the other, and OR-ing them lets the
+modifier win: the first returned Bonobo and Apparat with no d&b at all. The
+prompt handles a modifier filed as a *style*; a modifier filed as a *genre* is
+caught structurally in `query._drop_modifier_genres`, since the taxonomy knows
+`Jazz` does not parent `House`. Prompting alone was not reliable for that.
+
+**8. A request is not always a mood.** The query schema carries `genres`,
 `styles`, `year_from/to` and `min_confidence` alongside the mood axes, because a
 request that names a genre must *return* that genre. Without somewhere to put
 it, "hip hop" is discarded and the leftover mood profile matches indie rock
