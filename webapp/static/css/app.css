@@ -15,6 +15,19 @@
     color: var(--theme-text-muted);
 }
 
+/* ─── Hero ─── */
+/* The rotating word sat about 6px high of the sentence it belongs to. The
+   shared rotator is an inline-block with `overflow: hidden`, which forces
+   `vertical-align: bottom` -- an element with clipped overflow has no usable
+   baseline of its own, so the two baselines cannot be matched by alignment.
+   They coincide only when the box is exactly one line-height tall: the word's
+   baseline sits (half-leading + ascent) below the box top, and the sentence's
+   sits that same distance below the line box top. True for any font, so this
+   just has to track .hub-hero-title's line-height rather than guess an offset. */
+.hub-hero-title .word-rotator {
+    height: 1.1em;
+}
+
 /* ─── Track cards ─── */
 .track-card {
     overflow: hidden;
