@@ -150,6 +150,14 @@ MIN_CONFIDENCE = _int("MIN_CONFIDENCE", 0)
 #: >1 means repeated runs of the same mood return different (still good) picks.
 PLAYLIST_POOL_FACTOR = _float("PLAYLIST_POOL_FACTOR", 3.0)
 M3U_PATH_PREFIX = _str("M3U_PATH_PREFIX", "")
+#: Write library-relative paths instead of absolute ones. The importer resolves
+#: them against the playlist file's own directory, so the file has to be saved
+#: in the library root -- and in exchange it works on every machine regardless of
+#: where each one mounts the share. That is the case this exists for: a server
+#: seeing /mnt/media/Music over NFS cannot write a path a Mac seeing
+#: /Volumes/.../Music over SMB can open. M3U_PATH_PREFIX solves the same problem
+#: the other way, by naming one specific client's mount point.
+M3U_RELATIVE_PATHS = _bool("M3U_RELATIVE_PATHS", False)
 
 # --- web ui ----------------------------------------------------------------
 #: Bind address. 127.0.0.1 keeps it on this machine; 0.0.0.0 exposes it to the

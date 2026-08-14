@@ -5,9 +5,14 @@ that the file is UTF-8, and this library is full of non-ASCII artist names
 (Röyksopp, Sigur Rós, Verschiedene Interpreten). A `.m3u` with UTF-8 bytes inside
 is a coin flip on how any given importer decodes it.
 
-Paths are absolute and NFC-normalised. macOS hands filenames back in NFD, and an
-NFD path written into a playlist may not match the same file the importer looks
-up by an NFC name.
+Paths are NFC-normalised. macOS hands filenames back in NFD, and an NFD path
+written into a playlist may not match the same file the importer looks up by an
+NFC name.
+
+Whether they are absolute or relative is a choice -- see `render()`. It matters
+more than it sounds: the server reaches the library over NFS and a Mac reaches
+the same files over SMB, at different paths, so an absolute path that is correct
+on one is broken on the other.
 """
 from __future__ import annotations
 
@@ -48,36 +53,64 @@ def filename_for(title: str, fallback: str = "playlist") -> str:
 
 
 def render(tracks: list[Scored], library: Path | None = None,
-           path_prefix: str | None = None, title: str = "") -> str:
+           path_prefix: str | None = None, title: str = "",
+           relative: bool | None = None) -> str:
+    """Render the selection as .m3u8 text.
+
+    Three ways to write the paths, because "where is the music" has three
+    different answers depending on who reads the file:
+
+        relative        Artist/Album/01 Track.m4a
+        path_prefix     /Volumes/NVMENAS/media/Music/Artist/…
+        (default)       <LIBRARY_PATH>/Artist/…
+
+    **Relative wins when the file will be read on a different machine.** The
+    server sees the library over NFS at /mnt/media/Music and a Mac sees the same
+    files over SMB at /Volumes/…; an absolute path written by one is meaningless
+    to the other. A relative entry is resolved by the importer against the
+    playlist file's own directory, so the same file works on both -- at the cost
+    of one rule: **the .m3u8 has to sit in the library root**. Left in
+    ~/Downloads it resolves against ~/Downloads and finds nothing.
+
+    `path_prefix` (M3U_PATH_PREFIX) is the other answer to the same problem:
+    rewrite the root to whatever the *consuming* machine calls it. That keeps
+    the file freely movable, but bakes one particular client's mount point into
+    the server's config, so it only suits a single-client setup.
+    """
     root = library or config.LIBRARY_PATH
     prefix = config.M3U_PATH_PREFIX if path_prefix is None else path_prefix
+    relative = config.M3U_RELATIVE_PATHS if relative is None else relative
 
     lines = ["#EXTM3U"]
     if title:
         # Honoured by VLC, foobar2000 and friends. Music.app ignores it and uses
-        # the filename instead, which is why `slug()` exists -- writing both
-        # covers either importer.
+        # the filename instead, which is why `filename_for()` exists -- writing
+        # both covers either importer.
         lines.append(f"#PLAYLIST:{title}")
+    if relative:
+        base = ""
+    elif prefix:
+        base = prefix.rstrip("/") + "/"
+    else:
+        base = str(root).rstrip("/") + "/"
     for item in tracks:
         seconds = int(round(item.duration or 0))
         artist = item.artist or "Unknown Artist"
-        title = item.title or Path(item.path).stem
-        lines.append(f"#EXTINF:{seconds},{artist} - {title}")
-        # M3U_PATH_PREFIX rewrites the library root for the eventual server
-        # deployment, where the same files sit under a different mount point.
-        base = prefix.rstrip("/") if prefix else str(root).rstrip("/")
-        lines.append(unicodedata.normalize("NFC", f"{base}/{item.path}"))
+        name = item.title or Path(item.path).stem
+        lines.append(f"#EXTINF:{seconds},{artist} - {name}")
+        lines.append(unicodedata.normalize("NFC", f"{base}{item.path}"))
     return "\n".join(lines) + "\n"
 
 
 def write(tracks: list[Scored], destination: Path, library: Path | None = None,
-          path_prefix: str | None = None, title: str = "") -> Path:
+          path_prefix: str | None = None, title: str = "",
+          relative: bool | None = None) -> Path:
     destination = Path(destination)
     if destination.suffix.lower() not in (".m3u8", ".m3u"):
         destination = destination.with_suffix(".m3u8")
     destination.parent.mkdir(parents=True, exist_ok=True)
     # No BOM: Music.app and most importers treat a leading BOM as part of the
     # first line and then fail to match `#EXTM3U`.
-    destination.write_text(render(tracks, library, path_prefix, title),
+    destination.write_text(render(tracks, library, path_prefix, title, relative),
                            encoding="utf-8")
     return destination

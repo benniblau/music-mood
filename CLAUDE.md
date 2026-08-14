@@ -127,6 +127,20 @@ index and confidence badges carry their own translucent dark background because
 they sit on cover art, which is arbitrary user imagery — do not assume a
 readable backdrop.
 
+## Playlist paths
+
+A `.m3u8` carries paths, and the generating machine and the importing machine do
+not agree on them: NFS `/mnt/media/Music` on the server, SMB `/Volumes/…/Music`
+on a Mac. `render()` therefore offers relative, prefix-rewritten, or plain
+absolute, and the web UI asks per download rather than guessing — the failure is
+silent (greyed-out tracks, no error), so it is not something to get wrong by
+default. Relative entries resolve against the *playlist file's* directory, which
+is why the UI says to save it into the library folder; that rule is the whole
+cost of the portable option.
+
+`tracks.path` is already library-relative, so relative rendering is the absence
+of a prefix rather than a computation.
+
 ## Deployment
 
 `.venv/bin/gunicorn -c gunicorn.conf.py wsgi:app`, with the unit templates in

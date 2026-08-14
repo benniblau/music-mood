@@ -62,6 +62,9 @@ def _add_playlist(sub) -> None:
     p.add_argument("--year-to")
     p.add_argument("--title", help="override the generated playlist title")
     p.add_argument("--seed", type=int, help="make the selection reproducible")
+    p.add_argument("--relative", action=argparse.BooleanOptionalAction, default=None,
+                   help="write library-relative paths (save the file in the "
+                        "library root); overrides M3U_RELATIVE_PATHS")
     p.add_argument("--explain", action="store_true",
                    help="print the translated query, its rationale and per-pick scores")
 
@@ -263,7 +266,8 @@ def cmd_playlist(args) -> int:
     # an imported playlist after the file rather than the #PLAYLIST directive.
     destination = args.output or (
         config.DATA_DIR / f"{playlist.filename_for(title)}.m3u8")
-    written = playlist.write(chosen, destination, title=title)
+    written = playlist.write(chosen, destination, title=title,
+                             relative=args.relative)
     total = sum(item.duration for item in chosen)
     print(f"\n{icon['done']} “{title}” — {len(chosen)} tracks, "
           f"{total / 60:.0f} min → {written}")

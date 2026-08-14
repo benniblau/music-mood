@@ -179,6 +179,10 @@ def show_playlist(query_id: int):
         title=structured.get("title") or "Playlist",
         tracks=tracks, seed=seed, count=count,
         candidates=len(scored), limits=limits,
+        # Shown on the export menu so the absolute option states the root it
+        # will actually write, rather than leaving it to be discovered by a
+        # playlist that imports as 40 missing files.
+        m3u_base=(config.M3U_PATH_PREFIX or config.LIBRARY_PATH),
         total_seconds=sum(p.duration for p in picks))
 
 
@@ -225,7 +229,12 @@ def export_playlist(query_id: int):
     conn.close()
 
     title = structured.get("title") or "Playlist"
-    body = m3u.render(picks, title=title)
+    # `?relative=1` writes library-relative paths. The server and the machine
+    # importing the playlist reach the same files at different mount points
+    # (NFS here, SMB there), so an absolute path correct on one is broken on the
+    # other — but only the person downloading it knows which machine it is for.
+    body = m3u.render(picks, title=title,
+                      relative=request.args.get("relative") == "1")
     return send_file(
         io.BytesIO(body.encode("utf-8")),
         mimetype="audio/x-mpegurl", as_attachment=True,

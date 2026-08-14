@@ -26,10 +26,44 @@
                 <i class="bi bi-arrow-clockwise me-1"></i> Rethink
             </button>
         </form>
-        <a class="btn btn-outline-secondary btn-sm"
-           href="{{ url_for('export_playlist', query_id=query_id, n=count, seed=seed) }}">
-            <i class="bi bi-download me-1"></i> .m3u8
-        </a>
+        {# Two ways to write the paths, because the machine importing this may
+           not mount the library where the server does. Both are offered rather
+           than guessed, and each says what it will actually produce. #}
+        <div class="btn-group">
+            <a class="btn btn-outline-secondary btn-sm"
+               href="{{ url_for('export_playlist', query_id=query_id, n=count, seed=seed) }}">
+                <i class="bi bi-download me-1"></i> .m3u8
+            </a>
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm dropdown-toggle dropdown-toggle-split"
+                    data-bs-toggle="dropdown" aria-expanded="false">
+                <span class="visually-hidden">Choose how paths are written</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                    <a class="dropdown-item"
+                       href="{{ url_for('export_playlist', query_id=query_id, n=count, seed=seed) }}">
+                        <div class="fw-semibold">Absolute paths</div>
+                        <div class="small text-muted">
+                            <code>{{ m3u_base }}/…</code><br>
+                            Opens anywhere that mounts the library there.
+                        </div>
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item"
+                       href="{{ url_for('export_playlist', query_id=query_id, n=count, seed=seed, relative=1) }}">
+                        <div class="fw-semibold">Relative paths</div>
+                        <div class="small text-muted">
+                            <code>Artist/Album/Track.m4a</code><br>
+                            Works on any machine — save the file
+                            <em>into your music folder</em> first.
+                        </div>
+                    </a>
+                </li>
+            </ul>
+        </div>
     </div>
 </div>
 

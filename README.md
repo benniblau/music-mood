@@ -406,6 +406,26 @@ share is the normal failure here, not a crash.
 Restarting during a tagging run is safe and costs only the in-flight batches:
 tagging commits every batch and resumes where it stopped.
 
+## Getting the playlist to open on another machine
+
+A `.m3u8` is just paths, and the machine that generates one rarely mounts the
+library where the machine importing it does — the server reaches it over NFS at
+`/mnt/media/Music`, a Mac reaches the same files over SMB at
+`/Volumes/…/Music`. An absolute path that is right on one is broken on the
+other, and it fails as 40 greyed-out tracks rather than an error.
+
+Two fixes, both available per download from the export menu and on the CLI:
+
+| | Writes | Good for |
+| --- | --- | --- |
+| **Relative** (`--relative`, `M3U_RELATIVE_PATHS`) | `Artist/Album/Track.m4a` | any machine — **save the file into the library root**, since entries resolve against the playlist file's own directory |
+| **Prefix** (`M3U_PATH_PREFIX`) | `/Volumes/…/Music/Artist/…` | one known client; the file stays movable, but the server's config now names that client's mount point |
+| default | `<LIBRARY_PATH>/Artist/…` | importing on the machine that generated it |
+
+Relative is the portable answer and the one to reach for first. Its single rule
+is where the file sits: dropped in `~/Downloads` it resolves against
+`~/Downloads` and finds nothing.
+
 ## Measuring playlist quality
 
 ```bash
@@ -428,7 +448,7 @@ ignored.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 84 passed
+.venv/bin/python -m pytest tests/ -q      # 95 passed
 ```
 
 The scan tests exercise every row of the identity table against real files in a
