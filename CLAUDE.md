@@ -148,9 +148,24 @@ the git-ignored `.env`. This is a public repo.
 Tests are offline and hermetic. Anything touching the real endpoint is manual:
 
 ```bash
-python3 run.py tag --limit 20 -v      # smallest useful end-to-end check
-python3 run.py stats --full           # honesty check on tagged data
+python3 run.py tag --limit 20 -v          # smallest useful end-to-end check
+python3 run.py stats --full               # honesty check on tagged data
+.venv/bin/python tools/evaluate.py        # playlist quality, measured
+.venv/bin/python tools/evaluate.py workout --verbose
 ```
+
+`tools/evaluate.py` runs a fixed set of requests against expectations written
+down in advance. Use it whenever you touch `query_instructions`, the scoring, or
+the ontology — a prompt change that "feels better" is worth nothing next to a
+check that moves. Judging by reading playlists is how a soft house-pop record sat
+at line 19 of a high-intensity workout list unnoticed.
+
+Two rules for the eval itself. **Expect run-to-run variance**: the translation is
+an LLM call, so a single failing check may be noise — re-run before chasing it.
+And **when a check fails, ask whether the check is wrong first**. One capped
+sadness at 40 for workout requests and duly flagged Nine Inch Nails; aggressive
+music is often dark, and the honest fix was deleting the check, not tuning the
+system to satisfy it.
 
 `stats` is the quality gate, not a vanity report. Confidence must **not** be
 uniformly `2`, distributions must be spread rather than clustered mid-scale, and

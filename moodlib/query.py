@@ -106,9 +106,14 @@ def _vocab_fit(row, query: dict) -> float:
     track_adjectives = set(json.loads(row["adjectives_json"] or "[]"))
     track_contexts = set(json.loads(row["contexts_json"] or "[]"))
     dimensions = {name: (row[name] or 0.0) for name in ontology.GEMS}
-    wanted = query.get("adjectives") or []
-    unwanted = query.get("avoid") or []
-    contexts = query.get("contexts") or []
+    # Deduplicate: the schema cannot express uniqueItems (vLLM's grammar backend
+    # 500s on it), and the model does repeat itself -- an observed workout query
+    # asked for ["driving", "punchy", "driving", "driving"], which counted one
+    # term three times and inflated the normaliser with it.
+    unique = lambda terms: list(dict.fromkeys(terms or []))
+    wanted = unique(query.get("adjectives"))
+    unwanted = unique(query.get("avoid"))
+    contexts = unique(query.get("contexts"))
     score = 0.0
 
     for term in wanted:
@@ -127,9 +132,15 @@ def _vocab_fit(row, query: dict) -> float:
             if parent:
                 score -= 0.5 * (dimensions.get(parent, 0.0) / 100.0)
 
-    for name in contexts:
-        if name in track_contexts:
-            score += 0.5
+    matched = track_contexts & set(contexts)
+    score += 0.5 * len(matched)
+    if contexts and track_contexts and not matched:
+        # Tagged for something, and not for this. A track carrying `sleep` and
+        # `dinner` is positive evidence against a workout request, where an
+        # untagged track is merely silent -- so only a confident mismatch is
+        # penalised. This is what kept an orchestral film cue, correctly scored
+        # powerful and tense, out of a high-intensity workout list.
+        score -= 0.5
 
     terms = len(wanted) + len(unwanted) + 0.5 * len(contexts)
     return score / terms if terms else 0.0

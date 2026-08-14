@@ -323,6 +323,25 @@ Three related traps, all encoded in the code:
 
 ---
 
+## Measuring playlist quality
+
+```bash
+.venv/bin/python tools/evaluate.py
+```
+
+Runs a fixed set of requests and checks each result against expectations stated
+in advance — floors and ceilings on the dimensions the request implies, required
+and forbidden listening contexts, genre, minimum duration. It exists because
+reading a playlist is a bad way to judge one: nineteen of twenty picks were right
+in a high-intensity workout list, and the twentieth was a smooth house-pop
+record.
+
+That failure had a specific cause worth knowing. **`tension` is what separates
+*intense* from merely *upbeat*** — the offending track scored power 85 like the
+genuinely hard records around it, and tension 15 where they scored 50. The query
+was giving tension no weight at all, so the one discriminating dimension was
+ignored.
+
 ## Tests
 
 ```bash
