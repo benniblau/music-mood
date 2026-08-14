@@ -173,12 +173,22 @@ def test_ambiguous_match_is_not_guessed_when_the_inode_is_gone(library, conn):
     _make_track(library, "Tester/Album/02 Two.m4a", title="Same")
     scan.build(root=library, conn=conn)
 
-    for old, new in (("01 One.m4a", "11 One.m4a"), ("02 Two.m4a", "12 Two.m4a")):
+    # Copy-then-delete gives the replacements fresh inodes, which is what
+    # Music's add-back does and what a restore from backup does.
+    #
+    # Every copy is made BEFORE any original is deleted, and that ordering is
+    # load-bearing rather than tidiness. Doing it pair by pair passes on APFS and
+    # fails on ext4: ext4 reuses inode numbers immediately, so the second copy
+    # was handed the number the first delete had just freed, the scan matched it
+    # by inode, and the test failed for a reason that had nothing to do with what
+    # it is testing. Deleting nothing until every copy exists leaves no freed
+    # number to reuse, on any filesystem.
+    renames = (("01 One.m4a", "11 One.m4a"), ("02 Two.m4a", "12 Two.m4a"))
+    for old, new in renames:
         source = library / "Tester" / "Album" / old
-        # Copy-then-delete gives the replacement a fresh inode, which is what
-        # Music's add-back does and what a restore from backup does.
         shutil.copy2(source, source.with_name(new))
-        source.unlink()
+    for old, _ in renames:
+        (library / "Tester" / "Album" / old).unlink()
 
     report = scan.build(root=library, conn=conn)
 
