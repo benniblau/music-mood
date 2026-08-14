@@ -44,13 +44,15 @@ IOSchedulingClass=idle
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
-ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictNamespaces=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
+; Same reason as music-mood.service — see the note there.
+ProtectHome=no
+
 ; CHANGE ME — same two paths as music-mood.service.
 ReadWritePaths=/opt/music-mood/data
 ReadOnlyPaths=/srv/media/Music

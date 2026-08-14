@@ -52,7 +52,6 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
-ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
@@ -72,10 +71,15 @@ SystemCallErrorNumber=EPERM
 ; CHANGE ME if DATA_DIR is not ./data under WorkingDirectory.
 ReadWritePaths=/opt/music-mood/data
 
+; ProtectHome=yes hides /home entirely, which breaks the service if EITHER the
+; install or the library sits under a home directory — and installing under
+; /home/<user>/music-mood rather than /opt is the common case, so this ships
+; off. Set it to yes only if both paths are outside /home.
+ProtectHome=no
+
 ; The library is only ever read — neither scan nor tag writes to a music file.
 ; Mounting it read-only here means a bug cannot change that.
-; CHANGE ME to the LIBRARY_PATH from .env. Note ProtectHome=yes hides /home
-; entirely; if the library lives under a home directory, set ProtectHome=no.
+; CHANGE ME to the LIBRARY_PATH from .env.
 ReadOnlyPaths=/srv/media/Music
 
 [Install]
