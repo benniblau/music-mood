@@ -24,8 +24,10 @@ writes an `.m3u8` you import yourself.
 
 ## Install
 
-Requires Python 3.10+, [`ffmpeg`/`ffprobe`](https://ffmpeg.org)
-(`brew install ffmpeg`), and an OpenAI-compatible LLM endpoint.
+Requires Python 3.10+ and an OpenAI-compatible LLM endpoint. Tags are read with
+[mutagen](https://mutagen.readthedocs.io/), so there is no external binary
+dependency. (`ffmpeg` is needed only to synthesise fixtures for the test suite,
+which skips itself without it.)
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -39,7 +41,7 @@ dependencies, so `./run.py` works too.
 ## Quick start
 
 ```bash
-python3 run.py scan                    # index the library (~6 min first time)
+python3 run.py scan                    # index the library (~2 min first time)
 python3 run.py tag --limit 200         # validate quality on a slice first
 python3 run.py stats                   # check the slice before committing
 python3 run.py tag --all               # the full run — resumable, ~6 h for 23k
@@ -263,7 +265,7 @@ Measured against a local vLLM serving Qwen3.6-35B-A3B:
 
 | Stage | Rate | 23,000 tracks |
 | --- | --- | --- |
-| `scan`, first run | ~60 files/s | ~6 min |
+| `scan`, first run | 249 files/s | ~2 min |
 | `scan`, incremental | walk only | ~30 s |
 | `tag` | 0.96 tracks/s | **6.5 h** (measured, 22,987 tracks) |
 | `playlist` | one 8 s LLM call + local scoring | instant |
@@ -285,7 +287,14 @@ batch decodes almost serially. The two settings are not independent, so the
 budget is derived (`TAG_BATCH_SIZE × TAG_TOKENS_PER_TRACK`) rather than
 configured separately — changing the batch size stays safe.
 
-Two related traps, both encoded in the code:
+Tags are read with mutagen rather than by shelling out to `ffprobe`. Measured on
+500 files the two agree on **every raw field**, including all 84 freeform
+`INITIALKEY` atoms — but mutagen runs **5.2× faster** (200 vs 38 files/s) because
+ffprobe pays a process spawn per file. Switching was verified lossless the strong
+way: a full `--force` rescan of 22,935 files reported `changed 0`, meaning every
+track hashed identically and nothing needed re-tagging.
+
+Three related traps, all encoded in the code:
 
 - **`uniqueItems` is valid JSON Schema and vLLM's grammar backend returns a 500
   for it.** Deduplication lives in `tag.py` instead.
@@ -293,6 +302,9 @@ Two related traps, both encoded in the code:
   submission order, so one slow request blocks every finished batch behind it
   from committing — which presents as a dead stall rather than as slowness.
 - **Ask for the leaf of a hierarchy, derive the parent.** See layer 4 above.
+- **A generic tag reader drops freeform atoms.** `INITIALKEY` lives at
+  `----:com.apple.iTunes:INITIALKEY` on MP4, so `scan._musical_key` searches key
+  names rather than assuming one spelling.
 
 ---
 

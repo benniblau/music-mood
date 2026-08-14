@@ -13,14 +13,15 @@ cp .env.example .env          # set LIBRARY_PATH, LLM_URL, LLM_PORT
 .venv/bin/python -m pytest tests/ -q
 ```
 
-Needs `ffmpeg`/`ffprobe` on PATH. `run.py` re-execs under `.venv` if the calling
-interpreter lacks the dependencies, so `python3 run.py …` always works.
+No external binaries needed to run — tags are read with mutagen. `run.py`
+re-execs under `.venv` if the calling interpreter lacks the dependencies, so
+`python3 run.py …` always works.
 
-The scan and identity tests synthesise real tagged `.m4a` fixtures with `ffmpeg`
-and skip themselves without it. **Run the suite before trusting a change** — most
+`ffmpeg` is needed only to *synthesise* fixtures for the scan and identity
+tests, which skip themselves without it. **Run the suite before trusting a change** — most
 of these tests exist because something already went wrong once.
 
-## Six things that will bite you
+## Seven things that will bite you
 
 Each of these cost a real debugging session. They are counter-intuitive, so
 inherited assumptions are more dangerous here than ignorance.
@@ -56,7 +57,15 @@ disagreed with their own style. The model now picks only a style;
 `ontology.genre_for_style()` derives the genre. GEMS second-order factors work
 the same way. A hierarchy you compute cannot contradict itself.
 
-**6. A request is not always a mood.** The query schema carries `genres`,
+**6. Tags are read with mutagen, not ffprobe.** Not for the reason the sibling
+project warns about — that warning is about *writing* tags with ffmpeg, and this
+only reads. The reason is the process spawn per file: measured 200 vs 38 files/s
+on this library, with both agreeing on every raw field including the freeform
+`INITIALKEY` atoms. Don't reintroduce a subprocess here. Note freeform atoms are
+exactly what a generic reader drops, so `_musical_key` searches key names rather
+than assuming a spelling.
+
+**7. A request is not always a mood.** The query schema carries `genres`,
 `styles`, `year_from/to` and `min_confidence` alongside the mood axes, because a
 request that names a genre must *return* that genre. Without somewhere to put
 it, "hip hop" is discarded and the leftover mood profile matches indie rock

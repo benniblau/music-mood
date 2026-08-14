@@ -16,13 +16,15 @@ import pytest
 
 from moodlib import config, db, scan
 
+# ffmpeg is only needed to *synthesise* the fixtures; the scanner itself reads
+# them with mutagen and has no external binary dependency.
 pytestmark = pytest.mark.skipif(
-    shutil.which(config.FFPROBE_BIN) is None, reason="ffprobe not installed")
+    shutil.which("ffmpeg") is None, reason="ffmpeg not installed (fixtures only)")
 
 
 def _make_track(root: Path, relative: str, *, title: str, artist: str = "Tester",
                 album: str = "Album") -> Path:
-    """A real, tiny, tagged m4a -- ffprobe has to be able to read it."""
+    """A real, tiny, tagged m4a the scanner can read."""
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(

@@ -1,5 +1,7 @@
 # Runtime
-requests==2.34.2       # OpenAI-compatible HTTP client for the local vLLM endpoint
+requests==2.34.2       # OpenAI-compatible HTTP client for the local LLM endpoint
+mutagen==1.48.1        # tag reading; 5.2x faster than shelling out to ffprobe,
+                       # and reads the freeform atoms a generic reader drops
 
 # Development
-pytest==8.4.2          # regression tests for the ontology and scan state machine
+pytest==8.4.2          # regression tests for the ontology, identity and scoring

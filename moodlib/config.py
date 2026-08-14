@@ -14,7 +14,6 @@ edit cannot do that.
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -141,7 +140,6 @@ M3U_PATH_PREFIX = _str("M3U_PATH_PREFIX", "")
 # --- paths -----------------------------------------------------------------
 DATA_DIR = Path(_str("DATA_DIR", str(PROJECT_ROOT / "data")))
 DB_PATH = Path(_str("DB_PATH", str(DATA_DIR / "mood.sqlite3")))
-FFPROBE_BIN = _str("FFPROBE_BIN", "ffprobe")
 
 
 def llm_endpoint() -> str:
@@ -186,14 +184,6 @@ def require_library(root: Path | None = None) -> Path:
         raise SystemExit(f"library path is not a directory: {root}")
     return root
 
-
-def require_ffprobe() -> str:
-    resolved = shutil.which(FFPROBE_BIN)
-    if not resolved:
-        raise SystemExit(
-            f"ffprobe not found (looked for {FFPROBE_BIN!r}).\n"
-            "Install it with `brew install ffmpeg`, or set FFPROBE_BIN in .env.")
-    return resolved
 
 
 def ensure_dirs() -> None:
