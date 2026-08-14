@@ -110,3 +110,30 @@ def test_filename_keeps_the_title_readable(title, expected):
     # Music.app names the imported playlist after the file, ignoring #PLAYLIST,
     # so slugging this URL-style put "Sunny-Electric-Dreams" in the sidebar.
     assert playlist.filename_for(title) == expected
+
+
+def test_a_client_supplied_root_cannot_inject_playlist_lines():
+    """The prefix comes from a browser and lands in a file the user opens.
+
+    The format is line-oriented with no escaping, so a newline in the root would
+    add entries the playlist never selected. Length is capped for sanity; the
+    rest of a path is harmless text.
+    """
+    from webapp.app import _clean_prefix
+
+    assert _clean_prefix("/Volumes/Share/Music/") == "/Volumes/Share/Music"
+    assert _clean_prefix("/a\n#EXTINF:1,evil\n/etc/passwd") == "/a#EXTINF:1,evil/etc/passwd"
+    assert "\n" not in (_clean_prefix("/a\r\nb") or "")
+    assert len(_clean_prefix("/" + "x" * 900)) <= 512
+    # None means "not given", which render() reads as "use the configured
+    # default". An empty string would mean relative, which is a different answer.
+    assert _clean_prefix(None) is None
+    assert _clean_prefix("   ") is None
+
+
+def test_a_client_root_overrides_the_server_default():
+    text = playlist.render([_track("Air/Moon Safari/01 La Femme d'Argent.m4a")],
+                           library=LIBRARY, path_prefix="/Volumes/Share/Music",
+                           relative=False)
+    assert _paths(text) == ["/Volumes/Share/Music/Air/Moon Safari/01 La Femme d'Argent.m4a"]
+    assert "/mnt" not in text

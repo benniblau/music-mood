@@ -28,11 +28,13 @@
                 <i class="bi bi-arrow-clockwise me-1"></i> Rethink
             </button>
         </form>
-        {# Two ways to write the paths, because the machine importing this may
-           not mount the library where the server does. Both are offered rather
-           than guessed, and each says what it will actually produce. #}
-        <div class="btn-group">
-            <a class="btn btn-outline-secondary btn-sm"
+        {# Where the music lives is a fact about the machine importing the
+           playlist, not about the server, so the server does not store it. The
+           root below is kept in this browser's localStorage and appended to the
+           download URL; the server's own LIBRARY_PATH stays the default. #}
+        <div class="btn-group" id="export-group"
+             data-export-url="{{ url_for('export_playlist', query_id=query_id, n=count, seed=seed) }}">
+            <a class="btn btn-outline-secondary btn-sm" id="export-primary"
                href="{{ url_for('export_playlist', query_id=query_id, n=count, seed=seed) }}">
                 <i class="bi bi-download me-1"></i> .m3u8
             </a>
@@ -41,26 +43,39 @@
                     data-bs-toggle="dropdown" aria-expanded="false">
                 <span class="visually-hidden">Choose how paths are written</span>
             </button>
-            <ul class="dropdown-menu dropdown-menu-end">
+            <ul class="dropdown-menu dropdown-menu-end export-menu">
+                <li class="px-3 pt-2 pb-1">
+                    <div class="fw-semibold">This computer&rsquo;s music folder</div>
+                    <div class="small text-muted mb-2">
+                        Where <em>this</em> machine mounts the library. Kept in this
+                        browser only — the server never learns it, and never has to.
+                    </div>
+                    {# Music.app resolves neither relative paths nor the server's
+                       own root, so for importing there this is the option that
+                       works. #}
+                    <input type="text" class="form-control form-control-sm"
+                           id="export-prefix" spellcheck="false"
+                           placeholder="/Volumes/Share/Music">
+                    <div class="form-text mt-1" id="export-prefix-state"></div>
+                </li>
+                <li><hr class="dropdown-divider"></li>
                 <li>
                     <a class="dropdown-item"
                        href="{{ url_for('export_playlist', query_id=query_id, n=count, seed=seed) }}">
-                        <div class="fw-semibold">Absolute paths</div>
+                        <div class="fw-semibold">The server&rsquo;s own paths</div>
                         <div class="small text-muted">
-                            <code>{{ m3u_base }}/…</code><br>
-                            Opens anywhere that mounts the library there.
+                            <code>{{ m3u_base }}/…</code>
                         </div>
                     </a>
                 </li>
-                <li><hr class="dropdown-divider"></li>
                 <li>
                     <a class="dropdown-item"
                        href="{{ url_for('export_playlist', query_id=query_id, n=count, seed=seed, relative=1) }}">
                         <div class="fw-semibold">Relative paths</div>
                         <div class="small text-muted">
                             <code>Artist/Album/Track.m4a</code><br>
-                            Works on any machine — save the file
-                            <em>into your music folder</em> first.
+                            For VLC and foobar2000, saved into the music folder.
+                            <strong>Music.app cannot resolve these.</strong>
                         </div>
                     </a>
                 </li>
@@ -123,4 +138,56 @@
         <p class="text-muted mb-0">Nothing matched. Try a looser description.</p>
     </div></div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// The library root of whichever machine is downloading. It belongs here and not
+// in the server's .env: the server already knows where the library is *for it*,
+// and Music.app needs the path as this Mac sees it. Two different facts; only
+// one of them is the server's.
+//
+// Music.app resolves neither a relative entry nor the server's own absolute
+// path, which is why this exists at all rather than relative being enough.
+(function () {
+    var group   = document.getElementById('export-group');
+    if (!group) return;
+    var primary = document.getElementById('export-primary');
+    var input   = document.getElementById('export-prefix');
+    var state   = document.getElementById('export-prefix-state');
+    var base    = group.dataset.exportUrl;
+    var KEY     = 'musicMoodLibraryRoot';
+
+    function apply(value) {
+        value = (value || '').trim().replace(/\/+$/, '');
+        if (value) {
+            localStorage.setItem(KEY, value);
+            primary.href = base + '&prefix=' + encodeURIComponent(value);
+            state.textContent = 'Downloads will use this root.';
+        } else {
+            localStorage.removeItem(KEY);
+            primary.href = base;
+            state.textContent = 'Empty — downloads use the server\u2019s own paths.';
+        }
+    }
+
+    function sync() {
+        input.value = localStorage.getItem(KEY) || '';
+        apply(input.value);
+    }
+    sync();
+    // Chrome restores form values on reload and back-navigation, and does it
+    // *after* this script runs — leaving the field showing a root that
+    // localStorage no longer has, while the link correctly ignores it. Re-sync
+    // once the restoration has happened so the two cannot disagree.
+    window.addEventListener('pageshow', sync);
+    input.addEventListener('input', function () { apply(input.value); });
+    // Typing inside a dropdown otherwise closes it on the first click.
+    input.addEventListener('click', function (e) { e.stopPropagation(); });
+    input.addEventListener('keydown', function (e) {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); primary.click(); }
+    });
+})();
+</script>
 {% endblock %}

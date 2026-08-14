@@ -421,20 +421,36 @@ tagging commits every batch and resumes where it stopped.
 A `.m3u8` is just paths, and the machine that generates one rarely mounts the
 library where the machine importing it does — the server reaches it over NFS at
 `/mnt/media/Music`, a Mac reaches the same files over SMB at
-`/Volumes/…/Music`. An absolute path that is right on one is broken on the
-other, and it fails as 40 greyed-out tracks rather than an error.
+`/Volumes/…/Music`. It fails as 40 greyed-out tracks rather than an error.
 
-Two fixes, both available per download from the export menu and on the CLI:
+**Music.app resolves neither a relative entry nor another machine's absolute
+path.** It wants an absolute path that is correct on the importing Mac, and
+nothing else will do. So the export menu asks the browser, not the server:
 
-| | Writes | Good for |
+| | Writes | For |
 | --- | --- | --- |
-| **Relative** (`--relative`, `M3U_RELATIVE_PATHS`) | `Artist/Album/Track.m4a` | any machine — **save the file into the library root**, since entries resolve against the playlist file's own directory |
-| **Prefix** (`M3U_PATH_PREFIX`) | `/Volumes/…/Music/Artist/…` | one known client; the file stays movable, but the server's config now names that client's mount point |
-| default | `<LIBRARY_PATH>/Artist/…` | importing on the machine that generated it |
+| **This computer's music folder** | `/Volumes/…/Music/Artist/…` | Music.app. Typed once, kept in `localStorage`, appended to the download URL |
+| The server's own paths | `<LIBRARY_PATH>/Artist/…` | importing on the server itself |
+| Relative | `Artist/Album/Track.m4a` | VLC, foobar2000 — saved into the library root, where they resolve |
 
-Relative is the portable answer and the one to reach for first. Its single rule
-is where the file sits: dropped in `~/Downloads` it resolves against
-`~/Downloads` and finds nothing.
+The root belongs in the browser rather than in `.env` because it is a fact about
+the *client*. `M3U_PATH_PREFIX` still exists and does the same job from the
+server side, which suits a single fixed client, but it means the server holding
+one machine's configuration.
+
+**Or teach the Mac the server's path instead**, and every default export just
+works with nothing to set anywhere:
+
+```bash
+printf 'mnt\t/Volumes/YourShare\n' | sudo tee -a /etc/synthetic.conf   # tab, not spaces
+sudo reboot
+```
+
+That makes `/mnt` on the Mac a symlink to the share root, so the server's own
+`/mnt/media/Music/…` resolves locally and verbatim. `/etc/synthetic.conf` is the
+supported way to create an entry at `/` on a macOS with a read-only root volume;
+it only creates single-component names, so the symlink has to be `/mnt` with the
+rest of the path matching underneath.
 
 ## Measuring playlist quality
 
@@ -458,7 +474,7 @@ ignored.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 103 passed
+.venv/bin/python -m pytest tests/ -q      # 105 passed
 ```
 
 The scan tests exercise every row of the identity table against real files in a

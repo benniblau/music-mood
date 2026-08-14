@@ -154,12 +154,21 @@ gap rather than going quiet.
 
 A `.m3u8` carries paths, and the generating machine and the importing machine do
 not agree on them: NFS `/mnt/media/Music` on the server, SMB `/Volumes/…/Music`
-on a Mac. `render()` therefore offers relative, prefix-rewritten, or plain
-absolute, and the web UI asks per download rather than guessing — the failure is
-silent (greyed-out tracks, no error), so it is not something to get wrong by
-default. Relative entries resolve against the *playlist file's* directory, which
-is why the UI says to save it into the library folder; that rule is the whole
-cost of the portable option.
+on a Mac. `render()` offers relative, prefix-rewritten, or plain absolute. The
+failure is silent — greyed-out tracks, no error — so it is not something to get
+wrong by default.
+
+**Music.app resolves neither relative entries nor another machine's absolute
+path**, which was tested and is the reason the client-side root exists.
+Relative works for VLC and foobar2000 (resolved against the playlist file's own
+directory, so the file must sit in the library root) and is useless for the one
+importer this project was written for.
+
+The importing machine's root therefore lives in the browser's `localStorage` and
+rides on the export URL as `?prefix=`, never in server config: it is a fact about
+the client, and `.env` holding one client's mount point is the thing to avoid.
+`_clean_prefix()` strips control characters, because that value is untrusted
+text landing in a line-oriented format with no escaping.
 
 `tracks.path` is already library-relative, so relative rendering is the absence
 of a prefix rather than a computation.

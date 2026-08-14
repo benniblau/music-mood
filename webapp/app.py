@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import io
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -211,6 +212,22 @@ def rethink(query_id: int):
     return redirect(url_for("show_playlist", query_id=new_id))
 
 
+def _clean_prefix(raw: str | None) -> str | None:
+    """Sanitise a client-supplied library root.
+
+    Returns None for "not given", which is what `render()` reads as "use the
+    configured default" -- an empty string means something else there.
+
+    The value is untrusted text that ends up in a file the user then opens. The
+    one hazard worth naming is a newline: it would inject extra lines into the
+    playlist, since the format is line-oriented and has no escaping.
+    """
+    if raw is None:
+        return None
+    cleaned = re.sub(r"[\r\n\x00-\x1f]", "", raw).strip()[:512]
+    return cleaned.rstrip("/") or None
+
+
 @app.get("/playlist/<int:query_id>/export")
 def export_playlist(query_id: int):
     import json
@@ -229,11 +246,13 @@ def export_playlist(query_id: int):
     conn.close()
 
     title = structured.get("title") or "Playlist"
-    # `?relative=1` writes library-relative paths. The server and the machine
-    # importing the playlist reach the same files at different mount points
-    # (NFS here, SMB there), so an absolute path correct on one is broken on the
-    # other — but only the person downloading it knows which machine it is for.
+    # Where the music lives is a fact about the *client*, not the server, so the
+    # client says. `?prefix=` carries the importing machine's library root and
+    # `?relative=1` asks for no root at all; neither is stored, and the server's
+    # own LIBRARY_PATH remains the default. Putting the Mac's SMB path into the
+    # server's .env would mean the server holding one client's configuration.
     body = m3u.render(picks, title=title,
+                      path_prefix=_clean_prefix(request.args.get("prefix")),
                       relative=request.args.get("relative") == "1")
     return send_file(
         io.BytesIO(body.encode("utf-8")),
