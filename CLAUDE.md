@@ -111,6 +111,12 @@ The design decision worth preserving: **a playlist is derived, never stored.**
 `queries` table, so a re-roll costs no model call, every URL is reproducible, and
 there is no session state. Adding a `playlists` table would break all three.
 
+The UI reads nothing from the environment itself — `config.py` is still the only
+module that does, and its settings are the `WEB_*` keys. Two tests police this:
+one asserts every `WEB_*` setting exists, another that the key-scanning regex
+knows about every reader helper in `config.py` (a missing one makes a real key
+look undocumented, which is exactly how `WEB_DEBUG` first failed).
+
 Styling comes from `../ui-template` (Bootstrap 5.3 + the shared `custom.css`);
 `webapp/static/css/app.css` holds only what the track grid needs. The track
 index and confidence badges carry their own translucent dark background because

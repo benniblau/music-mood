@@ -59,6 +59,20 @@ def _float(key: str, default: float) -> float:
         return default
 
 
+def _bool(key: str, default: bool) -> bool:
+    raw = os.environ.get(key, "").strip().lower()
+    if not raw:
+        return default
+    # Accept what people actually write in a .env file, and treat anything
+    # unrecognised as the default rather than as truthy -- "WEB_DEBUG=no"
+    # silently enabling debug would be a nasty surprise on a LAN-bound app.
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
 def _csv(key: str, default: str) -> tuple[str, ...]:
     raw = os.environ.get(key, "").strip() or default
     return tuple(part.strip() for part in raw.split(",") if part.strip())
@@ -136,6 +150,29 @@ MIN_CONFIDENCE = _int("MIN_CONFIDENCE", 0)
 #: >1 means repeated runs of the same mood return different (still good) picks.
 PLAYLIST_POOL_FACTOR = _float("PLAYLIST_POOL_FACTOR", 3.0)
 M3U_PATH_PREFIX = _str("M3U_PATH_PREFIX", "")
+
+# --- web ui ----------------------------------------------------------------
+#: Bind address. 127.0.0.1 keeps it on this machine; 0.0.0.0 exposes it to the
+#: LAN, which is the point on a home server -- but note the app has no accounts
+#: and no authentication, so only do that on a network you trust.
+WEB_HOST = _str("WEB_HOST", "127.0.0.1")
+WEB_PORT = _int("WEB_PORT", 5000)
+WEB_DEBUG = _bool("WEB_DEBUG", False)
+#: Signs the session cookie that carries flash messages. Nothing sensitive rides
+#: on it today, so the default is a fixed string rather than a random one -- a
+#: random default would silently invalidate the cookie on every restart. Set a
+#: real value if the app ever grows anything worth protecting.
+WEB_SECRET_KEY = _str("WEB_SECRET_KEY", "music-mood-local")
+#: Cover art is immutable for a given track id, and a playlist page asks for
+#: dozens at once, so it is cached hard. A week.
+WEB_COVER_CACHE_SECONDS = _int("WEB_COVER_CACHE_SECONDS", 604800)
+#: How many past requests the home page lists, deduplicated by text.
+WEB_RECENT_QUERIES = _int("WEB_RECENT_QUERIES", 8)
+#: Choices in the playlist-size dropdown. PLAYLIST_SIZE is preselected if present.
+WEB_PLAYLIST_SIZES = tuple(
+    int(value) for value in _csv("WEB_PLAYLIST_SIZES", "20,40,60") if value.isdigit())
+#: Seconds between progress polls while a scan or tag job runs.
+WEB_POLL_SECONDS = _float("WEB_POLL_SECONDS", 2.0)
 
 # --- paths -----------------------------------------------------------------
 DATA_DIR = Path(_str("DATA_DIR", str(PROJECT_ROOT / "data")))

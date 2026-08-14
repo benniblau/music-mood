@@ -28,12 +28,11 @@ from mutagen import File as MutagenFile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from moodlib import config, db, ontology, playlist as m3u, query  # noqa: E402
+from moodlib import config, db, playlist as m3u, query  # noqa: E402
 from webapp import jobs  # noqa: E402
 
 app = Flask(__name__)
-# Only used for flash messages; this app binds to the LAN and has no accounts.
-app.secret_key = "music-mood-local"
+app.secret_key = config.WEB_SECRET_KEY
 
 PLACEHOLDER = (Path(__file__).resolve().parent / "static" / "img" / "no-cover.svg")
 
@@ -51,12 +50,16 @@ def index():
     # whatever was last being worked on.
     recent = list(conn.execute("""
         SELECT MAX(id) AS id, text, MAX(created_at) AS created_at
-        FROM queries GROUP BY text ORDER BY id DESC LIMIT 8"""))
+        FROM queries GROUP BY text ORDER BY id DESC LIMIT :limit""",
+        {"limit": config.WEB_RECENT_QUERIES}))
     conn.close()
     counts["pending"] = (counts["never_tagged"] + counts["stale_content"]
                          + counts["stale_ontology"] + counts["errors"])
     return render_template("index.html", counts=counts, recent=recent,
-                           library=config.LIBRARY_PATH)
+                           library=config.LIBRARY_PATH,
+                           sizes=config.WEB_PLAYLIST_SIZES,
+                           default_size=config.PLAYLIST_SIZE,
+                           poll_ms=int(config.WEB_POLL_SECONDS * 1000))
 
 
 @app.post("/jobs/<name>")
@@ -233,7 +236,8 @@ def cover(track_id: int):
     response = send_file(io.BytesIO(data), mimetype=mime)
     # Immutable: the artwork for a given track id only changes if the file is
     # re-tagged, and that assigns a new content_key anyway.
-    response.headers["Cache-Control"] = "public, max-age=604800"
+    response.headers["Cache-Control"] = (
+        f"public, max-age={config.WEB_COVER_CACHE_SECONDS}")
     return response
 
 
@@ -271,14 +275,22 @@ def clock(seconds: float | None) -> str:
 def main() -> None:
     import argparse
 
+    # Flags mirror the .env keys and win for a single run, exactly as they do in
+    # the CLI. `None` means "not given", so the configured value survives.
     parser = argparse.ArgumentParser(description="music-mood web UI")
-    parser.add_argument("--host", default="127.0.0.1",
-                        help="0.0.0.0 to reach it from other machines")
-    parser.add_argument("--port", type=int, default=5000)
-    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--host", help="override WEB_HOST (0.0.0.0 for the LAN)")
+    parser.add_argument("--port", type=int, help="override WEB_PORT")
+    parser.add_argument("--debug", action="store_true", help="override WEB_DEBUG")
     args = parser.parse_args()
-    print(f"🎧 music-mood → http://{args.host}:{args.port}", flush=True)
-    app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
+
+    host = args.host or config.WEB_HOST
+    port = args.port or config.WEB_PORT
+    debug = args.debug or config.WEB_DEBUG
+    print(f"🎧 music-mood → http://{host}:{port}", flush=True)
+    if host == "0.0.0.0":
+        print("   reachable from the network — this app has no authentication",
+              flush=True)
+    app.run(host=host, port=port, debug=debug, threaded=True)
 
 
 if __name__ == "__main__":

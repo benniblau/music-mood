@@ -326,9 +326,16 @@ Three related traps, all encoded in the code:
 ## Web UI
 
 ```bash
-.venv/bin/python webapp/app.py                 # http://127.0.0.1:5000
-.venv/bin/python webapp/app.py --host 0.0.0.0  # reachable from other machines
+.venv/bin/python webapp/app.py                 # WEB_HOST:WEB_PORT from .env
+.venv/bin/python webapp/app.py --host 0.0.0.0  # override for one run
 ```
+
+Its settings live in `.env` alongside everything else — `WEB_HOST`, `WEB_PORT`,
+`WEB_DEBUG`, `WEB_SECRET_KEY`, `WEB_COVER_CACHE_SECONDS`, `WEB_RECENT_QUERIES`,
+`WEB_PLAYLIST_SIZES`, `WEB_POLL_SECONDS` — and `--host/--port/--debug` override
+them for a single run, the same rule the CLI follows. Binding to `0.0.0.0`
+reaches the app from other machines, and it prints a reminder that it has no
+authentication.
 
 A small Flask front end over the same library: run a scan, run tagging, and make
 playlists. Results show as a grid of cover art pulled straight out of the files

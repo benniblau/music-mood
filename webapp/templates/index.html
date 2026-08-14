@@ -24,9 +24,10 @@
                    placeholder="rainy sunday morning, a bit wistful"
                    {% if not counts.tagged %}disabled{% endif %}>
             <select class="hub-search-select" name="count">
-                <option value="20">20 tracks</option>
-                <option value="40" selected>40 tracks</option>
-                <option value="60">60 tracks</option>
+                {% for size in sizes %}
+                    <option value="{{ size }}"
+                            {% if size == default_size %}selected{% endif %}>{{ size }} tracks</option>
+                {% endfor %}
             </select>
             <button class="hub-search-btn" type="submit"
                     {% if not counts.tagged %}disabled{% endif %}>Create</button>
@@ -160,7 +161,7 @@
     }
 
     poll();
-    timer = setInterval(poll, 2000);
+    timer = setInterval(poll, {{ poll_ms }});
 })();
 </script>
 {% endblock %}
