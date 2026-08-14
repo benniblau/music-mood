@@ -371,17 +371,26 @@ The `.m3u8` export assumes a person importing a file. Two routes exist for the
 other case — a home automation system that wants to describe a mood and hear it:
 
 ```
-POST /api/playlist   {"mood": "...", "count": 40, "seed": 7}
+POST /api/playlist          {"mood": "...", "count": 40, "seed": 7}
   -> {"query_id": 42, "seed": 7, "title": "Rainy Morning Wistfulness",
-      "count": 40, "page_url": "...", "tracks": [{"url": ..., "artist": ...}]}
+      "count": 40, "page_url": "...",
+      "tracks": [{"url": ..., "cover": ..., "artist": ..., "title": ...}]}
 
-GET  /audio/<track_id>/<name>      the audio itself, ranged
+GET  /api/playlist/42?seed=7   the same playlist again, no model call
+GET  /api/recent?limit=8       past requests, deduplicated by text
+GET  /audio/<track_id>/<name>  the audio itself, ranged
 ```
 
 It is the same translate/score/select the browser does, so the two cannot
 disagree about the same words. `query_id` and `seed` come back because a
 playlist is derived, not stored: `page_url` renders exactly what the speaker was
 handed, which is the answer to "what *was* that track?".
+
+That is also why there is no "current playlist" to fetch. A client that keeps
+the two numbers can ask for the tracks back whenever it needs them — which is
+how a dashboard shows what it queued without anywhere to store forty rows, and
+without the server growing per-client state. The POST and the GET share one
+derivation function for the same reason.
 
 Three details are shaped by Sonos specifically, and each fails silently rather
 than loudly:

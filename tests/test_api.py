@@ -159,6 +159,56 @@ def test_a_missing_file_is_a_404_not_a_traceback(client, tmp_path):
     assert client.get("/audio/999/whatever.m4a").status_code == 404
 
 
+def test_a_playlist_reads_back_identically_without_a_model_call(client, tmp_path,
+                                                                monkeypatch):
+    # The POST and the GET derive from the same (query_id, seed). If they ever
+    # disagree, the dashboard shows a playlist the speaker is not playing.
+    library(tmp_path / "api.sqlite3")
+    translation(monkeypatch)
+    made = client.post("/api/playlist", json={"mood": "x", "seed": 3}).get_json()
+
+    monkeypatch.setattr(query, "translate", lambda *a, **k: pytest.fail(
+        "reading a playlist back must not cost a model call"))
+    read = client.get(f"/api/playlist/{made['query_id']}?seed=3").get_json()
+
+    assert read["title"] == made["title"]
+    assert [t["id"] for t in read["tracks"]] == [t["id"] for t in made["tracks"]]
+    assert read["text"] == "x"
+
+
+def test_every_track_carries_cover_art(client, tmp_path, monkeypatch):
+    library(tmp_path / "api.sqlite3")
+    translation(monkeypatch)
+    body = client.post("/api/playlist", json={"mood": "x"}).get_json()
+    cover = body["tracks"][0]["cover"]
+    # Absolute for the same reason the audio URL is: a dashboard on another host
+    # renders it.
+    assert cover.startswith("http://") and "/cover/" in cover
+
+
+def test_an_unknown_playlist_is_a_404(client, tmp_path):
+    assert client.get("/api/playlist/9999").status_code == 404
+
+
+def test_recent_moods_are_deduplicated_newest_first(client, tmp_path, monkeypatch):
+    library(tmp_path / "api.sqlite3")
+    translation(monkeypatch)
+    for mood in ["rainy", "workout", "rainy"]:
+        client.post("/api/playlist", json={"mood": mood})
+
+    moods = client.get("/api/recent").get_json()["moods"]
+    # "rainy" ran twice but is one entry, and its second run moves it to the top.
+    assert [m["text"] for m in moods] == ["rainy", "workout"]
+
+
+def test_recent_moods_honour_a_limit(client, tmp_path, monkeypatch):
+    library(tmp_path / "api.sqlite3")
+    translation(monkeypatch)
+    for mood in ["a", "b", "c"]:
+        client.post("/api/playlist", json={"mood": mood})
+    assert len(client.get("/api/recent?limit=2").get_json()["moods"]) == 2
+
+
 def test_the_display_name_is_the_only_thing_the_name_segment_does():
     # The path is looked up from the id, so the segment is untrusted text that
     # never reaches the filesystem. Worth pinning: the day it starts being used

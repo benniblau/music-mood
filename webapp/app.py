@@ -296,6 +296,52 @@ def _display_name(artist: str, title: str, suffix: str) -> str:
     return re.sub(r"[/\\\x00-\x1f]", "_", label)[:120] + suffix
 
 
+def _api_payload(conn, query_id: int, structured: dict, seed: int, count: int):
+    """Derive a playlist and render it as JSON.
+
+    Shared by the POST that creates one and the GET that reads it back, so the
+    two cannot describe the same (query_id, seed) differently — which they
+    would, eventually, as two copies of this arithmetic.
+    """
+    limits = query.constraints(structured)
+    picks = query.select(query.score_all(conn, structured, **limits), count,
+                         max_per_artist=config.MAX_PER_ARTIST, seed=seed)
+    ids = {r["path"]: r["id"] for r in conn.execute(
+        "SELECT id, path FROM tracks WHERE missing_since IS NULL")}
+
+    tracks = []
+    for pick in picks:
+        track_id = ids.get(pick.path)
+        if track_id is None:                      # went missing between the two reads
+            continue
+        artist = pick.artist or "Unknown Artist"
+        title = pick.title or Path(pick.path).stem
+        tracks.append({
+            "id": track_id,
+            "artist": artist,
+            "title": title,
+            "album": pick.album,
+            "duration": pick.duration,
+            "url": url_for("audio", track_id=track_id,
+                           name=_display_name(artist, title,
+                                              Path(pick.path).suffix.lower()),
+                           _external=True),
+            # The existing browser route, absolute so a dashboard on another
+            # host can render it.
+            "cover": url_for("cover", track_id=track_id, _external=True),
+        })
+
+    return {
+        "query_id": query_id,
+        "seed": seed,
+        "title": structured.get("title") or "Playlist",
+        "count": len(tracks),
+        "tracks": tracks,
+        "page_url": url_for("show_playlist", query_id=query_id, seed=seed,
+                            n=count, _external=True),
+    }
+
+
 @app.post("/api/playlist")
 def api_playlist():
     payload = request.get_json(silent=True) or request.form
@@ -318,41 +364,51 @@ def api_playlist():
         return {"error": f"could not reach the model: {exc}"}, 502
 
     query_id = db.record_query(conn, text, structured)
-    limits = query.constraints(structured)
-    picks = query.select(query.score_all(conn, structured, **limits), count,
-                         max_per_artist=config.MAX_PER_ARTIST, seed=seed)
-    ids = {r["path"]: r["id"] for r in conn.execute(
-        "SELECT id, path FROM tracks WHERE missing_since IS NULL")}
+    body = _api_payload(conn, query_id, structured, seed, count)
     conn.close()
+    return body
 
-    tracks = []
-    for pick in picks:
-        track_id = ids.get(pick.path)
-        if track_id is None:                      # went missing between the two reads
-            continue
-        artist = pick.artist or "Unknown Artist"
-        title = pick.title or Path(pick.path).stem
-        tracks.append({
-            "id": track_id,
-            "artist": artist,
-            "title": title,
-            "album": pick.album,
-            "duration": pick.duration,
-            "url": url_for("audio", track_id=track_id,
-                           name=_display_name(artist, title,
-                                              Path(pick.path).suffix.lower()),
-                           _external=True),
-        })
 
-    return {
-        "query_id": query_id,
-        "seed": seed,
-        "title": structured.get("title") or "Playlist",
-        "count": len(tracks),
-        "tracks": tracks,
-        "page_url": url_for("show_playlist", query_id=query_id, seed=seed,
-                            n=count, _external=True),
-    }
+@app.get("/api/playlist/<int:query_id>")
+def api_playlist_read(query_id: int):
+    """Read a playlist back without spending a model call.
+
+    A playlist is (query_id, seed), so a client that kept those two numbers can
+    ask for the tracks again — which is how a dashboard shows what it queued
+    without needing anywhere to store forty rows.
+    """
+    import json
+
+    seed = request.args.get("seed", type=int) or 1
+    count = request.args.get("n", type=int) or config.PLAYLIST_SIZE
+    conn = db.connect()
+    row = conn.execute("SELECT * FROM queries WHERE id = ?", (query_id,)).fetchone()
+    if row is None:
+        conn.close()
+        return {"error": "no such query"}, 404
+    body = _api_payload(conn, query_id, json.loads(row["query_json"]), seed, count)
+    body["text"] = row["text"]
+    conn.close()
+    return body
+
+
+@app.get("/api/recent")
+def api_recent():
+    """Past requests, deduplicated by text — the same list the home page shows.
+
+    Grouped by text because the queries table records every run, including CLI
+    and eval ones, so the raw list is mostly repeats of whatever was last being
+    worked on.
+    """
+    limit = request.args.get("limit", type=int) or config.WEB_RECENT_QUERIES
+    conn = db.connect()
+    rows = list(conn.execute("""
+        SELECT MAX(id) AS id, text, MAX(created_at) AS created_at
+        FROM queries GROUP BY text ORDER BY id DESC LIMIT :limit""",
+        {"limit": limit}))
+    conn.close()
+    return {"moods": [{"query_id": r["id"], "text": r["text"],
+                       "created_at": r["created_at"]} for r in rows]}
 
 
 @app.get("/audio/<int:track_id>/<path:name>")
