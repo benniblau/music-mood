@@ -161,6 +161,24 @@ costs seconds.
    constrained to the ontology's enums. Every axis and dimension gets a `target`
    *and* a `weight`, so "loud" can pin `energy` hard while leaving
    `acousticness` free.
+
+   **Not every request is a mood.** When one names a genre, an era, or asks for
+   canonical tracks, those become *filters* rather than being folded into the
+   mood axes:
+
+   | You say | Becomes |
+   | --- | --- |
+   | "hip hop", "drum and bass" | `genres` / `styles` filter |
+   | "old-school", "90s", "golden age" | `year_from` / `year_to` |
+   | "legendary", "classic", "iconic" | `min_confidence: 2` — only recordings the model actually recognises |
+
+   This matters more than it sounds. *"old-school legendary hip hop"* once
+   returned Pavement, Bloc Party and Arctic Monkeys: with nowhere to put "hip
+   hop", only the mood residue survived, and groovy-nostalgic-mid-energy
+   describes indie rock just as well as it describes Rakim. Genre and style are
+   **OR-ed**, not AND-ed — a style already implies its genre, so intersecting
+   them would exclude the very tracks the genre was named to include. A purely
+   mood-based request sets no filters at all.
 2. **Score** — locally, over SQLite:
    ```
    axis_fit  = Σ w·(1 − |track − target|)      / Σ w
@@ -192,7 +210,7 @@ scan      [--library P] [--force] [--workers N] [-v]
 tag       [TARGET] [--limit N] [--batch-size N] [--concurrency N] [-v]
 stats     [--full]
 playlist  MOOD [-n N] [-o FILE] [--title T] [--max-per-artist N]
-               [--min-confidence 0|1|2] [--genre G] [--style S]
+               [--min-confidence 0|1|2] [--genre G ...] [--style S ...]
                [--year-from Y] [--year-to Y] [--seed N] [--explain]
 ```
 
@@ -281,7 +299,7 @@ Two related traps, both encoded in the code:
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 61 passed
+.venv/bin/python -m pytest tests/ -q      # 67 passed
 ```
 
 The scan tests exercise every row of the identity table against real files in a

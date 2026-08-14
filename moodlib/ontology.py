@@ -478,12 +478,33 @@ def query_schema() -> dict:
                 "type": "array", "maxItems": 3,
                 "items": {"type": "string", "enum": list(CONTEXTS)},
             },
+            # A request can name things that are not moods at all. Without
+            # somewhere to put them they are silently discarded, and the mood
+            # residue alone matches far too much: "old-school legendary hip hop"
+            # returned Pavement and Arctic Monkeys, because a groovy, nostalgic,
+            # mid-energy profile fits indie rock just as well as it fits Rakim.
+            "genres": {
+                "type": "array", "maxItems": 3,
+                "items": {"type": "string", "enum": list(DISCOGS_GENRES)},
+            },
+            "styles": {
+                "type": "array", "maxItems": 5,
+                "items": {"type": "string", "enum": list(DISCOGS_STYLES)},
+            },
+            # 0 means "no bound". A nullable integer would be the tidier schema,
+            # but guided decoding is fussy about unions and a sentinel cannot
+            # 500 the request.
+            "year_from": {"type": "integer", "minimum": 0, "maximum": 2100},
+            "year_to": {"type": "integer", "minimum": 0, "maximum": 2100},
+            "min_confidence": {"type": "integer", "minimum": 0, "maximum": 2},
             "title": {"type": "string", "maxLength": 48},
             "rationale": {"type": "string"},
         },
         "required": [
             *AXES, *GEMS, *GEMS_FACTORS,
-            "adjectives", "avoid", "contexts", "title", "rationale",
+            "adjectives", "avoid", "contexts",
+            "genres", "styles", "year_from", "year_to", "min_confidence",
+            "title", "rationale",
         ],
         "additionalProperties": False,
     }
@@ -537,6 +558,22 @@ def query_instructions(text: str) -> str:
         "actively reject otherwise perfect tracks. Usually empty.\n"
         "Include only terms that genuinely apply — fewer is better. Do not pad "
         "these lists to their maximum length; an empty list is a valid answer.\n\n"
+        "Not every request is purely about mood. When one names something "
+        "concrete, capture it here instead of trying to express it as a "
+        "feeling — these are applied as filters, so a request for a genre "
+        "returns that genre:\n"
+        "genres / styles = fill ONLY when the request actually names a genre or "
+        "style (\"hip hop\", \"drum and bass\", \"metal\"). Prefer styles when "
+        "the request is specific. Leave both empty for a purely mood-based "
+        "request — an unasked-for genre filter throws away good tracks.\n"
+        "year_from / year_to = fill when the request names an era, whether by "
+        "decade (\"90s\") or by idiom (\"old-school\", \"golden age\", "
+        "\"classic\", \"recent\"). Use what the era means for the genre in "
+        "question — old-school hip hop is not the same window as old-school "
+        "house. 0 means no bound.\n"
+        "min_confidence = 2 when the request asks for canonical, famous or "
+        "\"legendary\" tracks, 0 otherwise. It restricts the pool to recordings "
+        "that are actually well known rather than merely matching.\n\n"
         "title = a short, evocative name for the resulting playlist, 2-5 words, "
         "in the spirit of the request rather than a restatement of it. Title "
         "Case, no quotes, no emoji, no trailing punctuation. It becomes the "

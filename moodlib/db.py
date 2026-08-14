@@ -29,7 +29,7 @@ import json
 import sqlite3
 import unicodedata
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from moodlib import config, ontology
 
@@ -299,10 +299,14 @@ def counts(conn: sqlite3.Connection) -> dict[str, int]:
 
 
 def iter_scored(conn: sqlite3.Connection, min_confidence: int = 0,
-                genre: str | None = None, style: str | None = None,
+                genres: Sequence[str] = (), styles: Sequence[str] = (),
                 year_from: str | None = None, year_to: str | None = None
                 ) -> Iterable[sqlite3.Row]:
-    """Every tagged, present track eligible for a playlist, with its scores."""
+    """Every tagged, present track eligible for a playlist, with its scores.
+
+    Genres and styles are lists because a request can name more than one, and
+    they are OR-ed within a kind but AND-ed across: asking for the Hip Hop genre
+    with the Boom Bap and Gangsta styles means "hip hop, of those two kinds"."""
     sql = """
         SELECT t.path, t.artist, t.title, t.album, t.year, t.duration, m.*
         FROM moods m JOIN tracks t ON t.id = m.track_id
@@ -312,12 +316,23 @@ def iter_scored(conn: sqlite3.Connection, min_confidence: int = 0,
           AND m.confidence >= :min_confidence
     """
     params: dict = {"min_confidence": min_confidence}
-    if genre:
-        sql += " AND m.discogs_genre = :genre"
-        params["genre"] = genre
-    if style:
-        sql += " AND m.discogs_style = :style"
-        params["style"] = style
+    # Genre and style are OR-ed, not AND-ed, because a style already implies its
+    # genre -- they name regions of one taxonomy, not independent axes. AND-ing
+    # them reads "Hip Hop *and* Boom Bap", which for "old-school legendary hip
+    # hop" cut a 2,300-track genre down to 19 candidates: every classic tagged
+    # Gangsta or Conscious was excluded by a style list meant to describe it.
+    clauses, holes = [], {}
+    if genres:
+        names = ",".join(f":g{n}" for n in range(len(genres)))
+        clauses.append(f"m.discogs_genre IN ({names})")
+        holes.update({f"g{n}": value for n, value in enumerate(genres)})
+    if styles:
+        names = ",".join(f":s{n}" for n in range(len(styles)))
+        clauses.append(f"m.discogs_style IN ({names})")
+        holes.update({f"s{n}": value for n, value in enumerate(styles)})
+    if clauses:
+        sql += " AND (" + " OR ".join(clauses) + ")"
+        params.update(holes)
     if year_from:
         sql += " AND t.year != '' AND t.year >= :year_from"
         params["year_from"] = year_from

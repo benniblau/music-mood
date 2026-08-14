@@ -52,8 +52,11 @@ def _add_playlist(sub) -> None:
     p.add_argument("--max-per-artist", type=int, help="override MAX_PER_ARTIST")
     p.add_argument("--min-confidence", type=int, choices=(0, 1, 2),
                    help="override MIN_CONFIDENCE")
-    p.add_argument("--genre", help="restrict to a Discogs genre")
-    p.add_argument("--style", help="restrict to a Discogs style")
+    p.add_argument("--genre", action="append", metavar="G",
+                   help="restrict to a Discogs genre (repeatable; overrides "
+                        "any genre inferred from the request)")
+    p.add_argument("--style", action="append", metavar="S",
+                   help="restrict to a Discogs style (repeatable)")
     p.add_argument("--year-from")
     p.add_argument("--year-to")
     p.add_argument("--title", help="override the generated playlist title")
@@ -189,12 +192,24 @@ def cmd_playlist(args) -> int:
     progress.note("playlist", f"“{title}”" if title else "(untitled)")
     progress.note("llm", structured.get("rationale", "").strip())
 
-    scored = query.score_all(
-        conn, structured,
-        min_confidence=(config.MIN_CONFIDENCE if args.min_confidence is None
-                        else args.min_confidence),
-        genre=args.genre, style=args.style,
+    limits = query.constraints(
+        structured,
+        min_confidence=args.min_confidence,
+        genres=args.genre or (), styles=args.style or (),
         year_from=args.year_from, year_to=args.year_to)
+    limits["min_confidence"] = max(limits["min_confidence"], config.MIN_CONFIDENCE)
+
+    described = []
+    if limits["genres"] or limits["styles"]:
+        described.append("/".join([*limits["styles"], *limits["genres"]]))
+    if limits["year_from"] or limits["year_to"]:
+        described.append(f"{limits['year_from'] or '…'}–{limits['year_to'] or '…'}")
+    if limits["min_confidence"]:
+        described.append(f"k≥{limits['min_confidence']}")
+    if described:
+        progress.note("info", "filtering to " + ", ".join(described))
+
+    scored = query.score_all(conn, structured, **limits)
     if not scored:
         conn.close()
         raise SystemExit(f"{icon['warn']} no tracks matched the filters — try "

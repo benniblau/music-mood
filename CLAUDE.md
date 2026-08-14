@@ -20,7 +20,7 @@ The scan and identity tests synthesise real tagged `.m4a` fixtures with `ffmpeg`
 and skip themselves without it. **Run the suite before trusting a change** — most
 of these tests exist because something already went wrong once.
 
-## Five things that will bite you
+## Six things that will bite you
 
 Each of these cost a real debugging session. They are counter-intuitive, so
 inherited assumptions are more dangerous here than ignorance.
@@ -56,6 +56,15 @@ disagreed with their own style. The model now picks only a style;
 `ontology.genre_for_style()` derives the genre. GEMS second-order factors work
 the same way. A hierarchy you compute cannot contradict itself.
 
+**6. A request is not always a mood.** The query schema carries `genres`,
+`styles`, `year_from/to` and `min_confidence` alongside the mood axes, because a
+request that names a genre must *return* that genre. Without somewhere to put
+it, "hip hop" is discarded and the leftover mood profile matches indie rock
+equally well — that is a real bug this hit. Genre and style are OR-ed in
+`db.iter_scored`: a style implies its genre, so AND-ing them cut a 2,300-track
+genre to 19 candidates. `0` is the no-bound sentinel for years, because guided
+decoding is fussy about nullable unions.
+
 ## Where things live
 
 ```
@@ -88,6 +97,9 @@ because each is invisible when broken:
 - The scan state machine: rename, tag-edit-plus-rename, touch-without-retag,
   rewrite, soft delete, restore, and the mass-rename-is-not-mass-deletion case.
 - Redirected output contains no carriage returns or ANSI escapes.
+- A named genre filters; genre and style union rather than intersect; explicit
+  CLI flags override anything the model inferred; a pure-mood request filters
+  nothing.
 
 ## Conventions
 

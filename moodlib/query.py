@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import random
 from dataclasses import dataclass, field
+from typing import Sequence
 
 from moodlib import config, db, llm, ontology
 
@@ -145,13 +146,46 @@ def _confidence_factor(confidence: int | None) -> float:
     return floor + (1.0 - floor) * (level / 2.0)
 
 
+def constraints(query: dict, *, min_confidence: int | None = None,
+                genres: Sequence[str] = (), styles: Sequence[str] = (),
+                year_from: str | None = None, year_to: str | None = None) -> dict:
+    """Merge the filters the model derived with the ones the user typed.
+
+    A request can name things that are not moods -- a genre, an era, a demand for
+    canonical tracks -- and those are applied as filters rather than folded into
+    the mood axes. Expressing "hip hop" as a mood profile is what produced
+    Pavement and Arctic Monkeys for "old-school legendary hip hop": the mood
+    residue of that request describes indie rock just as well.
+
+    An explicit CLI flag always wins; the model only fills what the user left
+    open, so `--genre Rock` still overrides a request that says "hip hop".
+    """
+    def clamp_year(value) -> str | None:
+        # 0 is the schema's "no bound" sentinel -- a nullable integer would be
+        # tidier but guided decoding is fussy about unions.
+        try:
+            year = int(value or 0)
+        except (TypeError, ValueError):
+            return None
+        return str(year) if 1900 < year < 2100 else None
+
+    return {
+        "genres": tuple(genres) or tuple(query.get("genres") or ()),
+        "styles": tuple(styles) or tuple(query.get("styles") or ()),
+        "year_from": year_from or clamp_year(query.get("year_from")),
+        "year_to": year_to or clamp_year(query.get("year_to")),
+        "min_confidence": (min_confidence if min_confidence is not None
+                           else int(query.get("min_confidence") or 0)),
+    }
+
+
 def score_all(conn, query: dict, *, min_confidence: int = 0,
-              genre: str | None = None, style: str | None = None,
+              genres: Sequence[str] = (), styles: Sequence[str] = (),
               year_from: str | None = None, year_to: str | None = None
               ) -> list[Scored]:
     results: list[Scored] = []
-    for row in db.iter_scored(conn, min_confidence=min_confidence, genre=genre,
-                              style=style, year_from=year_from, year_to=year_to):
+    for row in db.iter_scored(conn, min_confidence=min_confidence, genres=genres,
+                              styles=styles, year_from=year_from, year_to=year_to):
         axis_total, axis_weight = _axis_fit(row, query)
         gems_total, gems_weight = _gems_fit(row, query)
         axis = axis_total / axis_weight if axis_weight else 0.0

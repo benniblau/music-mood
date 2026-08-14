@@ -25,12 +25,13 @@ def conn(tmp_path, monkeypatch):
 
 
 def add_track(conn, path, *, artist="A", title="T", adjectives=(), contexts=(),
-              confidence=2, **scores):
-    key = db.content_key(artist, "Album", title, "", "2020")
+              confidence=2, genre="Electronic", style="Techno", year="2020",
+              **scores):
+    key = db.content_key(artist, "Album", title, "", year)
     cur = conn.execute(
         "INSERT INTO tracks (path, artist, album, title, genre_raw, year, "
         "duration, content_key) VALUES (?,?,?,?,?,?,?,?)",
-        (path, artist, "Album", title, "", "2020", 200.0, key))
+        (path, artist, "Album", title, "", year, 200.0, key))
     track_id = cur.lastrowid
     row = {name: 0.5 for name in ontology.AXES}
     row.update({name: 50.0 for name in ontology.GEMS})
@@ -38,7 +39,7 @@ def add_track(conn, path, *, artist="A", title="T", adjectives=(), contexts=(),
     row.update({
         "adjectives_json": json.dumps(list(adjectives)),
         "contexts_json": json.dumps(list(contexts)),
-        "discogs_genre": "Electronic", "discogs_style": "Techno",
+        "discogs_genre": genre, "discogs_style": style,
         "confidence": confidence, "model": "test",
         "ontology_version": ontology.ONTOLOGY_VERSION,
         "content_key": key, "tagged_at": "now", "error": None,
@@ -241,3 +242,68 @@ def test_different_versions_are_not_treated_as_duplicates(conn):
     scored = query.score_all(conn, {"energy": axis(50)})
     chosen = query.select(scored, count=2, max_per_artist=2, seed=1)
     assert len(chosen) == 2
+
+
+# --- non-mood constraints ----------------------------------------------------
+
+def test_named_genre_is_applied_as_a_filter(conn):
+    """A request that names a genre must return that genre.
+
+    The regression: "old-school legendary hip hop" returned Pavement, Bloc Party
+    and Arctic Monkeys, because the query schema had nowhere to put "hip hop" and
+    the leftover mood profile — groovy, nostalgic, mid-energy — describes indie
+    rock just as well as it describes Rakim.
+    """
+    add_track(conn, "rap.m4a", artist="Nas", title="The World Is Yours",
+              genre="Hip Hop", style="Boom Bap")
+    add_track(conn, "indie.m4a", artist="Pavement", title="Cut Your Hair",
+              genre="Rock", style="Indie Rock")
+
+    limits = query.constraints({"genres": ["Hip Hop"], "styles": []})
+    scored = query.score_all(conn, {"energy": axis(50)}, **limits)
+    assert [s.artist for s in scored] == ["Nas"]
+
+
+def test_genre_and_style_are_unioned_not_intersected(conn):
+    """A style implies its genre, so AND-ing them excludes the genre's own tracks.
+
+    Observed live: the model returned genre Hip Hop with styles Boom Bap and
+    G-Funk, and AND-ing cut 2,300 hip hop tracks to 19 — every classic tagged
+    Gangsta or Conscious was excluded by a style list meant to describe it.
+    """
+    for style in ("Boom Bap", "Gangsta", "Conscious"):
+        add_track(conn, f"{style}.m4a", artist=style, title="T",
+                  genre="Hip Hop", style=style)
+    add_track(conn, "rock.m4a", artist="Rock Band", title="T",
+              genre="Rock", style="Indie Rock")
+
+    limits = query.constraints({"genres": ["Hip Hop"], "styles": ["Boom Bap"]})
+    scored = query.score_all(conn, {"energy": axis(50)}, **limits)
+    assert sorted(s.artist for s in scored) == ["Boom Bap", "Conscious", "Gangsta"]
+
+
+def test_era_words_become_year_bounds(conn):
+    limits = query.constraints({"year_from": 1988, "year_to": 1996})
+    assert (limits["year_from"], limits["year_to"]) == ("1988", "1996")
+
+
+def test_zero_is_the_no_bound_sentinel(conn):
+    # A nullable integer would be tidier, but guided decoding is fussy about
+    # unions and a sentinel cannot 500 the request.
+    limits = query.constraints({"year_from": 0, "year_to": 0})
+    assert limits["year_from"] is None and limits["year_to"] is None
+
+
+def test_explicit_flags_override_what_the_model_inferred(conn):
+    limits = query.constraints(
+        {"genres": ["Hip Hop"], "min_confidence": 2, "year_from": 1990},
+        genres=["Rock"], min_confidence=0, year_from="2000")
+    assert limits["genres"] == ("Rock",)
+    assert limits["min_confidence"] == 0
+    assert limits["year_from"] == "2000"
+
+
+def test_a_pure_mood_request_filters_nothing(conn):
+    limits = query.constraints({"genres": [], "styles": [], "min_confidence": 0})
+    assert limits["genres"] == () and limits["styles"] == ()
+    assert limits["min_confidence"] == 0
