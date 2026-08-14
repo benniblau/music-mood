@@ -365,6 +365,46 @@ becomes a spinner with a running count and says what is happening, and a second
 click is ignored — the request is not idempotent, so an impatient double-click
 would ask the model twice and leave a duplicate in Recent.
 
+## Playing straight to a speaker
+
+The `.m3u8` export assumes a person importing a file. Two routes exist for the
+other case — a home automation system that wants to describe a mood and hear it:
+
+```
+POST /api/playlist   {"mood": "...", "count": 40, "seed": 7}
+  -> {"query_id": 42, "seed": 7, "title": "Rainy Morning Wistfulness",
+      "count": 40, "page_url": "...", "tracks": [{"url": ..., "artist": ...}]}
+
+GET  /audio/<track_id>/<name>      the audio itself, ranged
+```
+
+It is the same translate/score/select the browser does, so the two cannot
+disagree about the same words. `query_id` and `seed` come back because a
+playlist is derived, not stored: `page_url` renders exactly what the speaker was
+handed, which is the answer to "what *was* that track?".
+
+Three details are shaped by Sonos specifically, and each fails silently rather
+than loudly:
+
+- **The URL ends in `Artist - Title.m4a`.** Home Assistant's
+  `media_player.play_media` has nowhere to put DIDL metadata, so a queued HTTP
+  URL displays as its last path segment. Without the segment the queue is forty
+  rows of numbers. The name is decoration — the file is resolved from the id, so
+  it is never a path.
+- **Content-Type is mapped, not guessed.** `mimetypes` does not know `.m4a`
+  everywhere, and a speaker that cannot identify a stream skips it without
+  saying so.
+- **Ranged requests are answered.** Sonos HEADs, then GETs a range, and seeks
+  with one too.
+
+The usual arrangement is a script that plays `tracks[0]` with `enqueue: replace`
+and appends the rest with `enqueue: add`, so playback starts on the first track
+while the queue is still filling.
+
+Worth being clear about the trade: `/audio` serves any track in the library to
+anything that can reach the port, and the app still has no authentication. It
+belongs on a trusted network, the same as the rest of the UI.
+
 ## Running it as a service
 
 ```bash

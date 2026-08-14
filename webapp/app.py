@@ -261,6 +261,124 @@ def export_playlist(query_id: int):
 
 
 # --------------------------------------------------------------------------
+# machine API — one request in, playable URLs out
+# --------------------------------------------------------------------------
+#
+# Written for Home Assistant, which enqueues the returned URLs onto a Sonos
+# speaker. It is the same three calls the browser routes make, so the two cannot
+# give different playlists for the same words; only the rendering differs.
+#
+# The response carries `query_id` and `seed`, which makes /playlist/<id>?seed=N
+# show exactly what the speaker is playing. That falls out of a playlist being
+# derived rather than stored, and is worth keeping.
+
+# Sonos decides what it can play from the Content-Type, so guessing wrong is
+# silent: the track is skipped, not reported. mimetypes does not know .m4a on
+# every platform, so the mapping is explicit rather than discovered.
+AUDIO_MIMETYPES = {
+    ".m4a": "audio/mp4", ".mp4": "audio/mp4", ".mp3": "audio/mpeg",
+    ".flac": "audio/flac", ".aiff": "audio/aiff", ".aif": "audio/aiff",
+    ".wav": "audio/wav",
+}
+
+
+def _display_name(artist: str, title: str, suffix: str) -> str:
+    """The filename Sonos shows in its queue.
+
+    HA's `media_player.play_media` cannot pass DIDL metadata, so a queued HTTP
+    URL is displayed as its last path segment. Ignoring that gives forty rows
+    reading `1234`; spending a segment on it gives `Bonobo - Kiara.m4a`.
+
+    Slashes have to go: the route matches with the `path` converter, so a title
+    containing one would otherwise split into extra segments and 404.
+    """
+    label = f"{artist} - {title}".strip(" -") or "track"
+    return re.sub(r"[/\\\x00-\x1f]", "_", label)[:120] + suffix
+
+
+@app.post("/api/playlist")
+def api_playlist():
+    payload = request.get_json(silent=True) or request.form
+    text = (payload.get("mood") or "").strip()
+    if not text:
+        return {"error": "no mood given"}, 400
+    count = int(payload.get("count") or config.PLAYLIST_SIZE)
+    seed = int(payload.get("seed") or random.randint(1, 10_000))
+
+    conn = db.connect()
+    if db.counts(conn)["tagged"] == 0:
+        conn.close()
+        return {"error": "nothing is tagged yet"}, 503
+    try:
+        structured = query.translate(text)
+    except Exception as exc:                      # noqa: BLE001 - reported as JSON
+        conn.close()
+        # 502: the request was fine, the model behind us was not. HA shows the
+        # status, and a 500 here would send it looking in the wrong place.
+        return {"error": f"could not reach the model: {exc}"}, 502
+
+    query_id = db.record_query(conn, text, structured)
+    limits = query.constraints(structured)
+    picks = query.select(query.score_all(conn, structured, **limits), count,
+                         max_per_artist=config.MAX_PER_ARTIST, seed=seed)
+    ids = {r["path"]: r["id"] for r in conn.execute(
+        "SELECT id, path FROM tracks WHERE missing_since IS NULL")}
+    conn.close()
+
+    tracks = []
+    for pick in picks:
+        track_id = ids.get(pick.path)
+        if track_id is None:                      # went missing between the two reads
+            continue
+        artist = pick.artist or "Unknown Artist"
+        title = pick.title or Path(pick.path).stem
+        tracks.append({
+            "id": track_id,
+            "artist": artist,
+            "title": title,
+            "album": pick.album,
+            "duration": pick.duration,
+            "url": url_for("audio", track_id=track_id,
+                           name=_display_name(artist, title,
+                                              Path(pick.path).suffix.lower()),
+                           _external=True),
+        })
+
+    return {
+        "query_id": query_id,
+        "seed": seed,
+        "title": structured.get("title") or "Playlist",
+        "count": len(tracks),
+        "tracks": tracks,
+        "page_url": url_for("show_playlist", query_id=query_id, seed=seed,
+                            n=count, _external=True),
+    }
+
+
+@app.get("/audio/<int:track_id>/<path:name>")
+def audio(track_id: int, name: str):
+    """Stream one track. `name` is display only — the path comes from the id.
+
+    Sonos issues a HEAD and then a ranged GET, and seeking within a track is
+    ranged too, so this must answer 206. Flask's send_file does that on its own
+    given a real path; building a BytesIO here (as the cover route does) would
+    quietly serve the whole file for every seek.
+    """
+    conn = db.connect()
+    row = conn.execute("SELECT path FROM tracks WHERE id = ?",
+                       (track_id,)).fetchone()
+    conn.close()
+    if row is None:
+        abort(404)
+
+    path = config.LIBRARY_PATH / row["path"]
+    if not path.exists():
+        abort(404)
+    return send_file(path, conditional=True,
+                     mimetype=AUDIO_MIMETYPES.get(path.suffix.lower()))
+
+
+# --------------------------------------------------------------------------
 # cover art
 # --------------------------------------------------------------------------
 
