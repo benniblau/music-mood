@@ -62,7 +62,7 @@
                 </div>
 
                 <div id="job-panel" class="d-none alert alert-info py-2 px-3 mb-3 small">
-                    <span class="spinner-border spinner-border-sm me-2"></span>
+                    <span class="spinner-border spinner-border-sm me-2" id="job-spinner"></span>
                     <span id="job-text">working…</span>
                 </div>
 
@@ -120,37 +120,76 @@
 // Poll while a scan or tag runs. Progress is read from the database rather than
 // pushed from the worker, so the numbers here and in `stats` cannot disagree.
 (function () {
-    var panel = document.getElementById('job-panel');
-    var text  = document.getElementById('job-text');
-    var timer = null;
+    var panel   = document.getElementById('job-panel');
+    var text    = document.getElementById('job-text');
+    var spinner = document.getElementById('job-spinner');
+    var timer   = null;
+
+    // The server keeps the last job around after it ends, so "not idle, not
+    // running" means "a job finished at some point" — not necessarily during
+    // this page's life. Reloading on that alone reloads on every page load,
+    // forever, which is what made the page flicker. Only a transition we
+    // actually witnessed is worth reloading for.
+    var sawRunning = false;
+
+    function stop() {
+        if (timer) { clearInterval(timer); timer = null; }
+    }
 
     function render(s) {
-        if (s.idle || !s.running) {
+        if (s.idle) {                       // no job has ever run
             panel.classList.add('d-none');
-            if (timer && !s.idle) { clearInterval(timer); timer = null; location.reload(); }
             return;
         }
-        panel.classList.remove('d-none');
-        document.querySelectorAll('.job-btn').forEach(function (b) { b.disabled = true; });
 
-        var mins = Math.floor(s.elapsed / 60), secs = Math.floor(s.elapsed % 60);
-        var label = s.name === 'tag' ? 'Tagging' : 'Scanning';
-        if (s.name === 'tag' && s.target) {
-            var pct = Math.round(100 * s.done / s.target);
-            var rate = s.done / Math.max(s.elapsed, 1);
-            var left = rate > 0 ? Math.round((s.target - s.done) / rate / 60) : null;
-            label += ' ' + s.done.toLocaleString() + ' / ' + s.target.toLocaleString() +
-                     ' (' + pct + '%)' + (left !== null ? ' — about ' + left + ' min left' : '');
-            document.getElementById('tag-progress').style.width =
-                (100 * s.counts.tagged / Math.max(s.counts.tracks, 1)) + '%';
-            document.getElementById('stat-tagged').textContent = s.counts.tagged.toLocaleString();
-            document.getElementById('stat-pending').textContent =
-                (s.counts.never_tagged + s.counts.stale_content +
-                 s.counts.stale_ontology + s.counts.errors).toLocaleString();
-        } else {
-            label += ' — ' + mins + 'm ' + secs + 's';
+        if (s.running) {
+            sawRunning = true;
+            panel.classList.remove('d-none');
+            spinner.classList.remove('d-none');
+            panel.classList.remove('alert-success');
+            panel.classList.add('alert-info');
+            document.querySelectorAll('.job-btn').forEach(function (b) { b.disabled = true; });
+
+            var label = s.name === 'tag' ? 'Tagging' : 'Scanning';
+            if (s.name === 'tag' && s.target) {
+                var pct  = Math.round(100 * s.done / s.target);
+                var rate = s.done / Math.max(s.elapsed, 1);
+                var left = rate > 0 ? Math.round((s.target - s.done) / rate / 60) : null;
+                label += ' ' + s.done.toLocaleString() + ' / ' + s.target.toLocaleString() +
+                         ' (' + pct + '%)' +
+                         (left !== null ? ' — about ' + left + ' min left' : '');
+                document.getElementById('tag-progress').style.width =
+                    (100 * s.counts.tagged / Math.max(s.counts.tracks, 1)) + '%';
+                document.getElementById('stat-tagged').textContent =
+                    s.counts.tagged.toLocaleString();
+                document.getElementById('stat-pending').textContent =
+                    (s.counts.never_tagged + s.counts.stale_content +
+                     s.counts.stale_ontology + s.counts.errors).toLocaleString();
+            } else {
+                label += ' — ' + Math.floor(s.elapsed / 60) + 'm ' +
+                         Math.floor(s.elapsed % 60) + 's';
+            }
+            text.textContent = label;
+            return;
         }
-        text.textContent = label;
+
+        // Finished.
+        if (sawRunning) {
+            stop();
+            location.reload();              // pick up the new counts, once
+            return;
+        }
+        // Finished before this page loaded: report the outcome and stay put.
+        // Polling continues -- a job can be started from another tab or from the
+        // CLI, and a page that stopped listening would sit there looking idle
+        // while the library was being rebuilt underneath it.
+        panel.classList.remove('d-none');
+        spinner.classList.add('d-none');
+        panel.classList.remove('alert-info');
+        panel.classList.add('alert-success');
+        text.textContent = s.error
+            ? 'Last ' + s.name + ' failed: ' + s.error
+            : 'Last ' + s.name + ': ' + (s.result || 'done');
     }
 
     function poll() {

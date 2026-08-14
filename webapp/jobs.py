@@ -60,6 +60,14 @@ _current: Job | None = None
 
 
 def current() -> Job | None:
+    """The most recent job, running or not.
+
+    Deliberately not cleared when a run ends: the finished job is how the page
+    reports the outcome of a scan or tag that has already completed. Callers must
+    therefore check `.running` rather than treating a non-None job as "busy" --
+    reading "a job exists" as "a job just finished" is what once made the home
+    page reload itself in a loop.
+    """
     return _current
 
 
