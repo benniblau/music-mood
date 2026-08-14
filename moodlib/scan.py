@@ -71,9 +71,17 @@ def _walk(root: Path) -> dict[str, os.stat_result]:
     Paths are stored NFC-normalised. macOS hands them back in NFD, and comparing
     an NFD path from disk against an NFC path from the database silently misses
     for every track with an accent in its name.
+
+    Counts as it goes, with no total to count towards -- it cannot know one until
+    it is finished. That still matters: this is a stat() per file over a network
+    share and takes the best part of a minute on 23,000 of them, and it was the
+    one phase that reported nothing at all. A silent minute is indistinguishable
+    from a hang, whether you are watching a terminal or a web page.
     """
     extensions = tuple(e.lower() for e in config.AUDIO_EXTENSIONS)
     found: dict[str, os.stat_result] = {}
+    # Sparse milestones: a nightly journal does not want 46 lines of this.
+    bar = progress.Progress(0, "scan", unit="files", every=5000, interval=15.0)
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         for name in filenames:
@@ -81,9 +89,12 @@ def _walk(root: Path) -> dict[str, os.stat_result]:
                 continue
             full = Path(dirpath) / name
             try:
-                found[unicodedata.normalize("NFC", str(full.relative_to(root)))] = full.stat()
+                relative = unicodedata.normalize("NFC", str(full.relative_to(root)))
+                found[relative] = full.stat()
             except (OSError, ValueError):
                 continue
+            bar.advance(relative)
+    bar.clear()
     return found
 
 

@@ -17,7 +17,11 @@
         with good taste.
     </p>
 
-    <form class="hub-search-form" method="post" action="{{ url_for('create_playlist') }}">
+    {# data-busy marks a form whose submit waits on the model. The POST is
+       synchronous and takes ~8s, during which a browser shows nothing at all —
+       which reads as a dead button, and gets clicked again. #}
+    <form class="hub-search-form" method="post" action="{{ url_for('create_playlist') }}"
+          data-busy="Reading your request">
         <div class="hub-search-bar">
             <i class="bi bi-search hub-search-icon"></i>
             <input class="hub-search-input" type="text" name="mood" autofocus
@@ -32,7 +36,7 @@
             <button class="hub-search-btn" type="submit"
                     {% if not counts.tagged %}disabled{% endif %}>Create</button>
         </div>
-        <div class="form-text mt-2">
+        <div class="form-text mt-2 busy-hint">
             Try “old-school legendary hip hop”, “ambient drum n bass, feeling blue”,
             or “high intensity workout”.
         </div>
@@ -62,8 +66,18 @@
                 </div>
 
                 <div id="job-panel" class="d-none alert alert-info py-2 px-3 mb-3 small">
-                    <span class="spinner-border spinner-border-sm me-2" id="job-spinner"></span>
-                    <span id="job-text">working…</span>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="spinner-border spinner-border-sm" id="job-spinner"></span>
+                        <span id="job-text" class="fw-semibold">working…</span>
+                        <span id="job-meta" class="ms-auto text-nowrap opacity-75"></span>
+                    </div>
+                    {# The phase bar is the *current stage*, not the whole job: a
+                       scan probes only what changed, so one bar for both would
+                       jump backwards when a stage ends. #}
+                    <div class="progress mt-2 d-none" id="job-step-wrap" style="height: 4px;">
+                        <div class="progress-bar" id="job-step" style="width: 0%"></div>
+                    </div>
+                    <div id="job-item" class="job-item d-none"></div>
                 </div>
 
                 <div class="d-flex gap-2 flex-wrap">
@@ -117,12 +131,21 @@
 
 {% block scripts %}
 <script>
-// Poll while a scan or tag runs. Progress is read from the database rather than
-// pushed from the worker, so the numbers here and in `stats` cannot disagree.
+// Poll while a scan or tag runs.
+//
+// The headline counts come from the database, so this page and `run.py stats`
+// cannot disagree. The phase, the current file and the rate come from the
+// worker, because no row in the database says "reading tags from 4,586 changed
+// files" — and without that a four-minute scan over a network share looks
+// exactly like a hang.
 (function () {
     var panel   = document.getElementById('job-panel');
     var text    = document.getElementById('job-text');
     var spinner = document.getElementById('job-spinner');
+    var metaEl  = document.getElementById('job-meta');
+    var itemEl  = document.getElementById('job-item');
+    var stepWrap = document.getElementById('job-step-wrap');
+    var step    = document.getElementById('job-step');
     var timer   = null;
 
     // The server keeps the last job around after it ends, so "not idle, not
@@ -134,6 +157,15 @@
 
     function stop() {
         if (timer) { clearInterval(timer); timer = null; }
+    }
+
+    function count(n) { return (n || 0).toLocaleString(); }
+
+    function clock(seconds) {
+        if (seconds === null || seconds === undefined) return "";
+        if (seconds < 90)   return Math.round(seconds) + "s";
+        if (seconds < 5400) return Math.round(seconds / 60) + " min";
+        return (seconds / 3600).toFixed(1) + " h";
     }
 
     function render(s) {
@@ -150,26 +182,80 @@
             panel.classList.add('alert-info');
             document.querySelectorAll('.job-btn').forEach(function (b) { b.disabled = true; });
 
-            var label = s.name === 'tag' ? 'Tagging' : 'Scanning';
+            // Headline. Tagging has a real total in the database, so the
+            // fraction leads. A scan has no such number — it does not know how
+            // much work there is until it has looked — so its phase leads
+            // instead, which is the informative thing anyway. Prefixing
+            // "Scanning — " to a phase that already begins "scanning …" is how
+            // the first version read.
+            var label, headlineHasCounts = false;
             if (s.name === 'tag' && s.target) {
-                var pct  = Math.round(100 * s.done / s.target);
-                var rate = s.done / Math.max(s.elapsed, 1);
-                var left = rate > 0 ? Math.round((s.target - s.done) / rate / 60) : null;
-                label += ' ' + s.done.toLocaleString() + ' / ' + s.target.toLocaleString() +
-                         ' (' + pct + '%)' +
-                         (left !== null ? ' — about ' + left + ' min left' : '');
+                headlineHasCounts = true;
+                label = 'Tagging ' + count(s.done) + ' / ' + count(s.target) +
+                        ' (' + Math.round(100 * s.done / s.target) + '%)';
                 document.getElementById('tag-progress').style.width =
                     (100 * s.counts.tagged / Math.max(s.counts.tracks, 1)) + '%';
                 document.getElementById('stat-tagged').textContent =
-                    s.counts.tagged.toLocaleString();
+                    count(s.counts.tagged);
                 document.getElementById('stat-pending').textContent =
-                    (s.counts.never_tagged + s.counts.stale_content +
-                     s.counts.stale_ontology + s.counts.errors).toLocaleString();
+                    count(s.counts.never_tagged + s.counts.stale_content +
+                          s.counts.stale_ontology + s.counts.errors);
             } else {
-                label += ' — ' + Math.floor(s.elapsed / 60) + 'm ' +
-                         Math.floor(s.elapsed % 60) + 's';
+                label = s.phase || (s.name === 'tag' ? 'Tagging' : 'Scanning');
+                label = label.charAt(0).toUpperCase() + label.slice(1);
             }
             text.textContent = label;
+
+            // Rate and remaining describe the stage actually running, not an
+            // average over the whole job — a scan's walk, probe and upsert
+            // phases differ by more than an order of magnitude in throughput.
+            var meta = [];
+            if (s.step_total && !headlineHasCounts) {
+                meta.push(count(s.step_done) + ' / ' + count(s.step_total));
+            } else if (s.step_done && !headlineHasCounts) {
+                meta.push(count(s.step_done) + (s.step_unit ? ' ' + s.step_unit : ''));
+            }
+            if (s.rate)  meta.push(s.rate.toFixed(1) + '/s');
+            if (s.eta)   meta.push(clock(s.eta) + ' left');
+            if (!meta.length) meta.push(clock(s.elapsed) + ' elapsed');
+            metaEl.textContent = meta.join(' · ');
+
+            if (s.step_total) {
+                stepWrap.classList.remove('d-none');
+                step.style.width = (100 * s.step_done / s.step_total) + '%';
+                step.textContent = '';
+            } else {
+                stepWrap.classList.add('d-none');
+            }
+
+            // The file being touched right now. This is what makes a slow scan
+            // over a network share legible as work rather than as a hang.
+            //
+            // Shown as the last two path components. A plain truncation clips
+            // the informative end — album directories here run to 60 characters
+            // before the filename even starts — and the CSS trick for keeping
+            // the tail (direction: rtl) reorders the slashes. The full path is
+            // on the title attribute.
+            var detail = '';
+            if (s.item) {
+                // Last two path components. A plain truncation clips the
+                // informative end — album directories here run past 60
+                // characters before the filename starts.
+                detail = s.item.split('/').slice(-2).join('/');
+            } else if (s.phase && label.indexOf(s.phase) === -1) {
+                // Tagging spends a whole LLM call on ten tracks at a time, so
+                // between batches there is no item to name and the counter sits
+                // still. The phase is what there is to say, and saying nothing
+                // for thirty seconds is what this panel exists to avoid.
+                detail = s.phase;
+            }
+            if (detail) {
+                itemEl.classList.remove('d-none');
+                itemEl.textContent = (s.phase_icon ? s.phase_icon + ' ' : '') + detail;
+                itemEl.title = s.item || s.phase;
+            } else {
+                itemEl.classList.add('d-none');
+            }
             return;
         }
 
@@ -185,6 +271,9 @@
         // while the library was being rebuilt underneath it.
         panel.classList.remove('d-none');
         spinner.classList.add('d-none');
+        stepWrap.classList.add('d-none');
+        itemEl.classList.add('d-none');
+        metaEl.textContent = '';
         panel.classList.remove('alert-info');
         panel.classList.add('alert-success');
         text.textContent = s.error

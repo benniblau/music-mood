@@ -20,7 +20,9 @@
            href="{{ url_for('show_playlist', query_id=query_id, n=count, seed=range(1, 10000)|random) }}">
             <i class="bi bi-shuffle me-1"></i> Another take
         </a>
-        <form method="post" action="{{ url_for('rethink', query_id=query_id) }}">
+        {# Another model call, same ~8s wait as creating the playlist. #}
+        <form method="post" action="{{ url_for('rethink', query_id=query_id) }}"
+              data-busy="Reading it again">
             <button class="btn btn-outline-primary btn-sm" type="submit"
                     title="Ask the model to read the same words again from scratch">
                 <i class="bi bi-arrow-clockwise me-1"></i> Rethink

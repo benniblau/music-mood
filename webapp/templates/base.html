@@ -55,6 +55,59 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script>
+// Forms marked `data-busy` post to a route that waits on the model — about
+// eight seconds, during which the browser paints nothing and the page looks
+// dead. So say what is happening, and count, because a number that moves is the
+// difference between "waiting" and "broken".
+//
+// This also stops the second click. The request is not idempotent: each one
+// asks the model again and writes another `queries` row, so an impatient
+// double-click costs two translations and leaves a duplicate in Recent.
+(function () {
+    document.querySelectorAll('form[data-busy]').forEach(function (form) {
+        form.addEventListener('submit', function (event) {
+            if (form.dataset.busyActive) {          // already going
+                event.preventDefault();
+                return;
+            }
+            form.dataset.busyActive = '1';
+
+            var button = form.querySelector('[type="submit"]');
+            var hint   = form.querySelector('.busy-hint');
+            var label  = form.dataset.busy || 'Working';
+            var started = Date.now();
+            var seconds = null;
+
+            function tick() {
+                var elapsed = Math.round((Date.now() - started) / 1000);
+                if (seconds) seconds.textContent = elapsed + 's';
+                if (hint) {
+                    hint.textContent = label + ' — the model is turning your words '
+                        + 'into a mood profile. Usually about eight seconds.';
+                }
+            }
+
+            if (button) {
+                // Freeze the width first, or the button collapses and the row
+                // reflows the moment its content is replaced.
+                button.style.minWidth = button.offsetWidth + 'px';
+                button.innerHTML =
+                    '<span class="spinner-border spinner-border-sm me-1"></span>' +
+                    '<span class="busy-seconds">0s</span>';
+                seconds = button.querySelector('.busy-seconds');
+                // Deferred: disabling a submit control inside its own submit
+                // handler is what cancels the submission in some browsers. A
+                // zero timeout lands after the navigation is already under way.
+                setTimeout(function () { button.disabled = true; }, 0);
+            }
+            if (hint) hint.classList.add('busy-hint-active');
+            tick();
+            setInterval(tick, 1000);
+        });
+    });
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -144,8 +144,8 @@ def _run(limit: int | None, target: str | None, batch_size: int | None,
 
     batches = list(_chunks(pending, batch_size))
     progress.note("tag", f"{len(pending):,} tracks to characterise, "
-                         f"{len(batches):,} batches of {batch_size}, "
-                         f"{concurrency} concurrent")
+                         f"{len(batches):,} batch{'' if len(batches) == 1 else 'es'} "
+                         f"of {batch_size}, {concurrency} concurrent")
 
     session = llm.new_session()
     model = llm.resolve_model(session)

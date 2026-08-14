@@ -17,6 +17,7 @@ from __future__ import annotations
 import shutil
 import sys
 import time
+from typing import Callable
 
 #: Emoji are used as line-level markers, one per kind of event, so a log can be
 #: skimmed for the interesting lines. They are not decoration on every word.
@@ -45,10 +46,40 @@ def _duration(seconds: float) -> str:
     return f"{seconds / 3600:.1f}h"
 
 
+#: Optional observer for a front end that is not a terminal. The web UI sets
+#: this while a job runs so it can show the same thing the live line shows --
+#: which file, how fast, how much left. None everywhere else, so the CLI pays a
+#: single `is None` per item for it.
+_watcher: Callable[[dict], None] | None = None
+
+
+def set_watcher(callback: Callable[[dict], None] | None) -> None:
+    """Route progress events to `callback` as well as to the stream.
+
+    One slot, not a list: exactly one job runs at a time (see webapp/jobs.py),
+    and a registry would imply otherwise.
+    """
+    global _watcher
+    _watcher = callback
+
+
+def _emit(event: dict) -> None:
+    watcher = _watcher
+    if watcher is None:
+        return
+    try:
+        watcher(event)
+    except Exception:
+        # A display that cannot keep up must never take down a six-hour tagging
+        # run. Losing a status line is free; losing the run is not.
+        pass
+
+
 def note(kind: str, message: str) -> None:
     """A one-off line that is never overwritten."""
     sys.stderr.write(f"{ICON.get(kind, ICON['info'])} {message}\n")
     sys.stderr.flush()
+    _emit({"type": "note", "kind": kind, "message": message})
 
 
 class Progress:
@@ -75,6 +106,7 @@ class Progress:
         self._last_count = 0
         self._live = self.stream.isatty() and not verbose
         self._dirty = False
+        self._last_watch = 0.0
 
     # -- reporting ---------------------------------------------------------
     def _rate(self) -> float:
@@ -93,6 +125,23 @@ class Progress:
     def advance(self, item: str = "", count: int = 1) -> None:
         self.done += count
         now = time.time()
+
+        # Fed before the output-mode branches below: a watching UI is neither a
+        # TTY nor a redirected log, and would otherwise see nothing in verbose
+        # mode and only every 500th item in the other. Throttled separately from
+        # the display -- 5 Hz is far more often than any poller asks, and this
+        # runs 23,000 times.
+        if _watcher is not None and (now - self._last_watch >= 0.2
+                                     or self.done == self.total):
+            rate = self._rate()
+            self._last_watch = now
+            _emit({
+                "type": "progress", "kind": self.kind, "unit": self.unit,
+                "done": self.done, "total": self.total,
+                "rate": rate, "item": item,
+                "eta": ((self.total - self.done) / rate
+                        if rate > 0 and self.total else None),
+            })
 
         if self.verbose:
             self.stream.write(f"{ICON.get(self.kind, '•')} {self._suffix()}  {item}\n")
@@ -127,6 +176,7 @@ class Progress:
         self.clear()
         self.stream.write(f"{ICON.get(kind, ICON['info'])} {message}\n")
         self.stream.flush()
+        _emit({"type": "note", "kind": kind, "message": message})
 
     def clear(self) -> None:
         if self._dirty:

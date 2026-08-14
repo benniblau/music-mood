@@ -28,6 +28,34 @@
     height: 1.1em;
 }
 
+/* ─── Waiting on the model ─── */
+/* The hint under the search bar doubles as the status line while a request is
+   in flight, so it stops being a muted aside for as long as that lasts. */
+.busy-hint-active {
+    color: var(--theme-text) !important;
+    opacity: 1;
+}
+
+/* ─── Job panel ─── */
+/* The path of the file being processed. Monospace and one line: it is glanced
+   at to confirm movement, not read, and album paths are long enough to wrap
+   into three lines and make the panel jump on every poll. */
+/* Matches the library bar above it; the Bootstrap default blue reads as a
+   different kind of thing sitting two elements apart. */
+#job-step {
+    background: var(--theme-gradient);
+}
+
+.job-item {
+    font-family: var(--bs-font-monospace, monospace);
+    font-size: 0.72rem;
+    opacity: 0.75;
+    margin-top: 0.35rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* ─── Track cards ─── */
 .track-card {
     overflow: hidden;

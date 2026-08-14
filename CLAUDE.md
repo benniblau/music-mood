@@ -127,6 +127,29 @@ index and confidence badges carry their own translucent dark background because
 they sit on cover art, which is arbitrary user imagery — do not assume a
 readable backdrop.
 
+## Reporting what a job is doing
+
+Two channels, deliberately split. **Counts are derived from the database**
+(`db.counts`), so the UI cannot disagree with `stats`. **Transient detail is
+pushed** from the worker: `progress.set_watcher()` is set by `webapp/jobs.py`
+for the life of a run, and both `progress.note()` and `Progress.advance()` feed
+it. Nothing else may push a *number* through that channel — the moment a count
+comes from two places they will differ, which is the bug the derived design
+avoids.
+
+Three things the implementation has to keep:
+
+- The watcher is throttled to 5 Hz. `advance()` runs 23,000 times a run and the
+  page polls every two seconds.
+- A raising watcher is swallowed. A broken display must not end a six-hour
+  tagging run.
+- A milestone clears the previous phase's counters, or a finished stage's
+  numbers sit under the new label and progress appears to jump backwards.
+
+Tagging spends one LLM call on ten tracks, so between batches there is no item
+to name and the counter does not move; the panel shows the phase text in that
+gap rather than going quiet.
+
 ## Playlist paths
 
 A `.m3u8` carries paths, and the generating machine and the importing machine do

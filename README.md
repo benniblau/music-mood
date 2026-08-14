@@ -351,9 +351,19 @@ every playlist URL is reproducible and shareable, and the server keeps no
 per-user state at all. *Rethink* is the separate, slower button that asks the
 model to read the same words again from scratch.
 
-Scanning and tagging run in a worker thread and the page polls for progress —
-which is read back out of the database rather than pushed from the worker, so the
-web UI and `run.py stats` cannot disagree.
+Scanning and tagging run in a worker thread and the page polls for progress.
+*How much is done* is read back out of the database, so the web UI and
+`run.py stats` cannot disagree. *What it is doing right now* — the phase, the
+file being read, the rate — is pushed from the worker through `moodlib.progress`,
+the same source the terminal's live line reads, because no database row says
+"reading tags from 4,586 changed files". A scan has four phases of very
+different lengths, and behind one unchanging label they are indistinguishable
+from a hang.
+
+Creating a playlist waits on the model for about eight seconds. The button
+becomes a spinner with a running count and says what is happening, and a second
+click is ignored — the request is not idempotent, so an impatient double-click
+would ask the model twice and leave a duplicate in Recent.
 
 ## Running it as a service
 
@@ -448,7 +458,7 @@ ignored.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 95 passed
+.venv/bin/python -m pytest tests/ -q      # 103 passed
 ```
 
 The scan tests exercise every row of the identity table against real files in a
