@@ -13,7 +13,8 @@ import statistics
 import sys
 from pathlib import Path
 
-from moodlib import config, db, ontology, playlist, progress, query, scan, tag
+from moodlib import (config, db, lock, ontology, playlist, progress, query,
+                     scan, tag)
 
 
 def _add_scan(sub) -> None:
@@ -283,3 +284,9 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         progress.note("warn", "interrupted — progress is committed, re-run to resume")
         return 130
+    except lock.Busy as exc:
+        # Expected on a server: the web UI or the nightly timer is already
+        # writing. A traceback would suggest something broke, when the right
+        # answer is simply to wait.
+        progress.note("warn", f"{exc} — nothing was changed")
+        return 75          # EX_TEMPFAIL: try again later

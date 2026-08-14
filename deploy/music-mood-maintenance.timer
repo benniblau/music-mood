@@ -1,0 +1,19 @@
+; Runs music-mood-maintenance.service overnight.
+
+[Unit]
+Description=Nightly Music Mood rescan and tagging
+Documentation=https://github.com/benniblau/music-mood
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+
+; The tagging run saturates the LLM endpoint for as long as it takes, so it
+; should not start at the same instant as everything else scheduled for 03:30.
+RandomizedDelaySec=30m
+
+; Catch up after downtime rather than skipping the night. A missed run only
+; means the library is stale, and staleness is exactly what this fixes.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

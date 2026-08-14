@@ -174,6 +174,18 @@ WEB_PLAYLIST_SIZES = tuple(
 #: Seconds between progress polls while a scan or tag job runs.
 WEB_POLL_SECONDS = _float("WEB_POLL_SECONDS", 2.0)
 
+# --- web ui, served by gunicorn --------------------------------------------
+#: Threads in the single gunicorn worker. There is deliberately no worker count
+#: to go with it -- see gunicorn.conf.py for why the process count is fixed at
+#: one. Requests are short (a template render plus a SQLite read) except cover
+#: art, which is I/O off a network mount, so threads are the resource that
+#: matters and a handful is plenty for a household.
+WEB_THREADS = _int("WEB_THREADS", 8)
+#: Log every request. Off by default because the home page polls /jobs/status
+#: every WEB_POLL_SECONDS: one browser tab left open writes ~43,000 lines a day
+#: into the journal, which buries anything worth reading.
+WEB_ACCESS_LOG = _bool("WEB_ACCESS_LOG", False)
+
 # --- paths -----------------------------------------------------------------
 DATA_DIR = Path(_str("DATA_DIR", str(PROJECT_ROOT / "data")))
 DB_PATH = Path(_str("DB_PATH", str(DATA_DIR / "mood.sqlite3")))
@@ -203,6 +215,19 @@ def tag_max_tokens(batch_size: int) -> int:
     safe, which a standalone LLM_MAX_TOKENS did not.
     """
     return batch_size * TAG_TOKENS_PER_TRACK + 400
+
+
+def web_request_timeout() -> int:
+    """Seconds gunicorn allows a request before killing the worker.
+
+    Derived rather than configured, for the same reason as tag_max_tokens: it is
+    not independent of anything else. The slowest request the app can make is a
+    mood translation, which waits on the LLM for up to LLM_TIMEOUT. Gunicorn's
+    default is 30s -- well under the 240s the endpoint is allowed -- so a slow
+    model would return 502 for a request that was about to succeed, and raising
+    LLM_TIMEOUT without raising this would quietly reintroduce that.
+    """
+    return LLM_TIMEOUT + 60
 
 
 def require_library(root: Path | None = None) -> Path:

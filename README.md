@@ -326,9 +326,12 @@ Three related traps, all encoded in the code:
 ## Web UI
 
 ```bash
-.venv/bin/python webapp/app.py                 # WEB_HOST:WEB_PORT from .env
+.venv/bin/python webapp/app.py                 # development: WEB_HOST:WEB_PORT from .env
 .venv/bin/python webapp/app.py --host 0.0.0.0  # override for one run
 ```
+
+That runner is Flask's, for development. For anything left running, see
+[Running it as a service](#running-it-as-a-service) below.
 
 Its settings live in `.env` alongside everything else — `WEB_HOST`, `WEB_PORT`,
 `WEB_DEBUG`, `WEB_SECRET_KEY`, `WEB_COVER_CACHE_SECONDS`, `WEB_RECENT_QUERIES`,
@@ -352,6 +355,57 @@ Scanning and tagging run in a worker thread and the page polls for progress —
 which is read back out of the database rather than pushed from the worker, so the
 web UI and `run.py stats` cannot disagree.
 
+## Running it as a service
+
+```bash
+.venv/bin/gunicorn -c gunicorn.conf.py wsgi:app
+```
+
+`gunicorn.conf.py` takes everything from `.env` through `moodlib/config.py`, so
+the deployment has no second configuration surface. Copy the units in `deploy/`,
+change the four paths marked `CHANGE ME`, and enable them:
+
+```bash
+sudo cp deploy/music-mood.service /etc/systemd/system/
+sudo systemctl enable --now music-mood.service
+journalctl -u music-mood -f
+```
+
+`deploy/music-mood-maintenance.{service,timer}` are optional and add the nightly
+`scan` + `tag` that keeps the database in step with a library that keeps moving.
+
+**One gunicorn worker, with threads — not the other way round.** The job runner
+holds its state in process memory, so a second worker would answer status polls
+about a run it cannot see, and the mutex stopping two scans at once is a
+`threading.Lock`, which does not span processes. This is a real ceiling: lifting
+it means moving job state into the database. For a household app serving one
+household, threads are the right shape anyway — a request is a template render
+and a SQLite read, and the slow one (cover art off a network mount) is I/O.
+
+Three things that matter on a server and not on a laptop:
+
+- **Two writers.** The service, the nightly timer and an SSH session can all
+  reach the same database. `moodlib/lock.py` is an advisory `flock` that scan
+  and tag both take, so the second one exits immediately with
+  `another process is already running library (pid N)` and exit code 75, instead
+  of discovering it six hours into a tagging run. It is a kernel lock on an open
+  file descriptor, so a `kill -9` or a power cut releases it — nothing has to
+  clean up a stale lock file afterwards.
+- **The worker timeout is derived, not configured.** Gunicorn's default is 30s
+  and a mood translation is allowed `LLM_TIMEOUT` (240s) to wait on the model, so
+  the default would return 502 for requests that were about to succeed.
+  `config.web_request_timeout()` keeps the two in step.
+- **Access logging is off by default.** The page polls `/jobs/status` every
+  `WEB_POLL_SECONDS`; one browser tab left open writes ~43,000 lines a day into
+  the journal. `WEB_ACCESS_LOG=true` turns it back on.
+
+`/healthz` answers 200 only if the library is mounted *and* something is tagged,
+and 503 otherwise — because a process that is up but pointing at an unmounted
+share is the normal failure here, not a crash.
+
+Restarting during a tagging run is safe and costs only the in-flight batches:
+tagging commits every batch and resumes where it stopped.
+
 ## Measuring playlist quality
 
 ```bash
@@ -374,7 +428,7 @@ ignored.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 75 passed
+.venv/bin/python -m pytest tests/ -q      # 84 passed
 ```
 
 The scan tests exercise every row of the identity table against real files in a
@@ -397,6 +451,7 @@ moodlib/
 ├── query.py           mood text -> structured query -> scored selection
 ├── progress.py        live status line / milestone logging
 ├── playlist.py        selection -> titled .m3u8
+├── lock.py            one library writer at a time, across processes
 └── cli.py             argument parsing + dispatch
 data/mood.sqlite3
 ```

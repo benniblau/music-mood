@@ -36,7 +36,7 @@ from pathlib import Path
 
 from mutagen import File as MutagenFile
 
-from moodlib import config, db, progress
+from moodlib import config, db, lock, progress
 
 
 @dataclass
@@ -210,6 +210,22 @@ def _probe(args: tuple[Path, str]) -> dict | None:
 
 def build(root: Path | None = None, force: bool = False, conn=None,
           workers: int | None = None, verbose: bool = False) -> ScanReport:
+    """Bring the database in step with what is on disk.
+
+    Wraps the real work in the cross-process write lock, so the systemd service
+    and someone's `run.py scan` over SSH cannot both rewrite the same rows. The
+    lock is taken only when this call owns its connection: a caller that hands
+    one in -- the tests, anything embedding a scan -- is working on its own
+    database and has no business contending for the server's.
+    """
+    if conn is not None:
+        return _build(root, force, conn, workers, verbose)
+    with lock.writer():
+        return _build(root, force, None, workers, verbose)
+
+
+def _build(root: Path | None, force: bool, conn, workers: int | None,
+           verbose: bool) -> ScanReport:
     root = config.require_library(root)
     workers = workers or config.SCAN_WORKERS
     owns_conn = conn is None

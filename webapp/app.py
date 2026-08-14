@@ -62,6 +62,30 @@ def index():
                            poll_ms=int(config.WEB_POLL_SECONDS * 1000))
 
 
+@app.get("/healthz")
+def healthz():
+    """Liveness, plus the two things that actually break on a server.
+
+    A process that is up but pointed at an unmounted share, or at a database
+    nothing has been tagged into, is not healthy in any sense a monitor cares
+    about -- and those are the normal failures here, not crashes. Answering 503
+    for them is what makes `systemctl status` and an uptime check disagree
+    usefully rather than both saying "running".
+    """
+    conn = db.connect()
+    counts = db.counts(conn)
+    conn.close()
+    mounted = config.LIBRARY_PATH.exists()
+    payload = {
+        "ok": mounted and counts["tagged"] > 0,
+        "library_mounted": mounted,
+        "tracks": counts["tracks"],
+        "tagged": counts["tagged"],
+        "job": (jobs.current().as_dict() if jobs.current() else None),
+    }
+    return payload, (200 if payload["ok"] else 503)
+
+
 @app.post("/jobs/<name>")
 def start_job(name: str):
     ok, message = jobs.start(name)

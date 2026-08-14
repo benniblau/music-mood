@@ -87,6 +87,9 @@ decoding is fussy about nullable unions.
 
 ```
 run.py                 entry point; re-execs under .venv
+wsgi.py                WSGI entry point for gunicorn
+gunicorn.conf.py       server settings, all of them from config.py
+deploy/                systemd unit templates
 moodlib/
 ├── ontology.py        THE ONTOLOGY — read first, everything is shaped by it
 ├── config.py          the ONLY module that reads os.environ
@@ -96,6 +99,7 @@ moodlib/
 ├── tag.py             resumable batch tagging
 ├── query.py           mood text -> structured query -> scored selection
 ├── playlist.py        selection -> titled .m3u8
+├── lock.py            one library writer at a time, across processes
 ├── progress.py        live status line (TTY) / milestone lines (redirected)
 └── cli.py             argument parsing + dispatch
 ```
@@ -123,6 +127,40 @@ index and confidence badges carry their own translucent dark background because
 they sit on cover art, which is arbitrary user imagery — do not assume a
 readable backdrop.
 
+## Deployment
+
+`.venv/bin/gunicorn -c gunicorn.conf.py wsgi:app`, with the unit templates in
+`deploy/`. Three things constrain it, and all three are invisible until they
+bite:
+
+**One worker, with threads.** `webapp/jobs.py` keeps the current job in module
+memory, so a second worker would answer status polls about a run it cannot see,
+and `_lock` is a `threading.Lock`, which does not span processes — two workers
+could start two scans. This is a genuine ceiling, not a shortcut: lifting it
+means moving job state into the database. `workers = 1` in `gunicorn.conf.py` is
+therefore not a tuning knob.
+
+**`gunicorn.conf.py` imports config as `settings`.** Gunicorn reads that
+module's globals as settings and `config` is one of its own (`-c`), so binding
+that name makes it reject the file with `Not a string` — an error that says
+nothing about the cause. Every value there still comes from `config.py`; the
+invariant holds outside `moodlib/` too.
+
+**Scan and tag take a cross-process lock** (`moodlib/lock.py`), because the
+service, the nightly timer and an SSH session can all write the same database.
+The lock is skipped when a connection is passed in — that is how the tests drive
+a scan against their own database — so it is `build()`/`run()` that take it and
+`_build()`/`_run()` that do the work. It is an advisory `flock`, deliberately:
+the kernel releases it when the fd closes, so a `kill -9` mid-tag does not wedge
+every later run behind a stale lock file.
+
+The worker timeout is derived from `LLM_TIMEOUT`
+(`config.web_request_timeout()`), because gunicorn's 30s default is well under
+the 240s a mood translation may spend waiting on the model — that is a 502 on a
+request that was about to succeed. Access logging defaults off: the page polls
+`/jobs/status` every `WEB_POLL_SECONDS`, which is ~43,000 journal lines a day
+from one idle tab.
+
 ## Invariants the tests enforce
 
 Breaking any of these fails the suite. They are asserted rather than documented
@@ -141,6 +179,11 @@ because each is invisible when broken:
 - A named genre filters; genre and style union rather than intersect; explicit
   CLI flags override anything the model inferred; a pure-mood request filters
   nothing.
+- The write lock excludes a second process, frees on release, and survives its
+  holder being killed — the last one is why it is a `flock` and not a lock file.
+- The home page reloads only for a job transition it watched happen. The runner
+  keeps the last job forever, so "a job exists" is not "a job just finished";
+  reading it that way reloaded the page on every load.
 
 ## Conventions
 

@@ -1,0 +1,56 @@
+; Nightly upkeep: follow what changed on disk, then characterise what is new.
+; Optional, but a library drifts — files get added, retagged and renamed by
+; whatever manages them, and a database that never catches up quietly stops
+; describing the music it claims to.
+;
+; Safe to run while the web UI is up. Both take the same cross-process write
+; lock (moodlib/lock.py), so if someone started a scan from the browser this
+; exits with "another process is already running library" and the timer tries
+; again tomorrow — rather than two writers racing for SQLite's single writer
+; slot part-way into a run that costs hours.
+;
+; Copy alongside music-mood-maintenance.timer, edit the paths, then:
+;   sudo systemctl enable --now music-mood-maintenance.timer
+;   systemctl list-timers music-mood-maintenance
+
+[Unit]
+Description=Music Mood — rescan the library and tag what is new
+Documentation=https://github.com/benniblau/music-mood
+After=network-online.target
+Wants=network-online.target
+; CHANGE ME to the LIBRARY_PATH from .env.
+RequiresMountsFor=/srv/media/Music
+
+[Service]
+Type=oneshot
+User=music-mood
+Group=music-mood
+; CHANGE ME
+WorkingDirectory=/opt/music-mood
+
+; Two ExecStart lines run in order and stop on the first failure, which is the
+; behaviour wanted: there is nothing to tag if the scan refused to run.
+ExecStart=/opt/music-mood/.venv/bin/python run.py scan
+ExecStart=/opt/music-mood/.venv/bin/python run.py tag
+
+; A full tagging run over 23,000 tracks takes about six and a half hours at
+; ~1 track/s. This bounds a run that has genuinely wedged without capping a
+; normal one — an incremental night is minutes, not hours.
+TimeoutStartSec=10h
+
+Nice=10
+IOSchedulingClass=idle
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+; CHANGE ME — same two paths as music-mood.service.
+ReadWritePaths=/opt/music-mood/data
+ReadOnlyPaths=/srv/media/Music

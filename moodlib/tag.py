@@ -16,7 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterator, Sequence
 
-from moodlib import config, db, llm, ontology, progress
+from moodlib import config, db, llm, lock, ontology, progress
 
 
 ICON_FAIL = progress.ICON["error"]
@@ -115,6 +115,21 @@ def _label(row) -> str:
 def run(limit: int | None = None, target: str | None = None,
         batch_size: int | None = None, concurrency: int | None = None,
         conn=None, verbose: bool = False) -> dict[str, int]:
+    """Characterise everything that is stale, resumably.
+
+    Holds the same cross-process write lock as a scan -- see the note there.
+    Two taggers running at once would not go faster: they would mark the same
+    rows stale, pay the model twice for one answer, and race each other for the
+    single SQLite writer slot part-way into a run that costs hours.
+    """
+    if conn is not None:
+        return _run(limit, target, batch_size, concurrency, conn, verbose)
+    with lock.writer():
+        return _run(limit, target, batch_size, concurrency, None, verbose)
+
+
+def _run(limit: int | None, target: str | None, batch_size: int | None,
+         concurrency: int | None, conn, verbose: bool) -> dict[str, int]:
     batch_size = batch_size or config.TAG_BATCH_SIZE
     concurrency = concurrency or config.TAG_CONCURRENCY
     owns_conn = conn is None

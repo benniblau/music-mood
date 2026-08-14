@@ -1,0 +1,82 @@
+; The web UI, served by gunicorn.
+;
+; Copy to /etc/systemd/system/music-mood.service and edit the four paths marked
+; CHANGE ME. Everything else is deliberate; the comments say why.
+;
+;   sudo systemctl daemon-reload
+;   sudo systemctl enable --now music-mood.service
+;   systemctl status music-mood.service
+;   journalctl -u music-mood -f
+
+[Unit]
+Description=Music Mood — playlists from a local music library, by mood
+Documentation=https://github.com/benniblau/music-mood
+After=network-online.target
+Wants=network-online.target
+
+; The library lives on a network share. Without this the service can start
+; before the mount lands, and every scan then refuses to run — correctly, since
+; an unmounted share looks exactly like a wiped library, but confusingly.
+; CHANGE ME to the LIBRARY_PATH from .env.
+RequiresMountsFor=/srv/media/Music
+
+[Service]
+Type=exec
+User=music-mood
+Group=music-mood
+
+; CHANGE ME. Load-bearing: DATA_DIR and DB_PATH default to ./data, and the
+; gunicorn config resolves everything else relative to this file's directory.
+WorkingDirectory=/opt/music-mood
+
+; No EnvironmentFile. The app reads .env itself, through the single module
+; allowed to touch the environment (moodlib/config.py), and pointing systemd at
+; the same file would parse it a second time under slightly different rules —
+; systemd does not strip trailing comments or expand `~`. One parser, one
+; behaviour, and `.env` stays readable by the CLI on the same box.
+ExecStart=/opt/music-mood/.venv/bin/gunicorn -c gunicorn.conf.py wsgi:app
+ExecReload=/bin/kill -s HUP $MAINPID
+
+Restart=on-failure
+RestartSec=5s
+
+; Long enough for gunicorn's own graceful_timeout, and no longer. A tagging run
+; in flight is dropped rather than waited for: it commits every batch and
+; resumes where it stopped, so waiting hours for it would only make
+; `systemctl restart` look hung.
+TimeoutStopSec=45s
+
+; --- hardening -------------------------------------------------------------
+; The app reads music files and writes one SQLite database. Nothing else.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+; ProtectSystem=strict makes the whole filesystem read-only, so the two things
+; the app writes have to be named: the SQLite database (plus its -wal and -shm
+; siblings) and the lock file, both under DATA_DIR.
+; CHANGE ME if DATA_DIR is not ./data under WorkingDirectory.
+ReadWritePaths=/opt/music-mood/data
+
+; The library is only ever read — neither scan nor tag writes to a music file.
+; Mounting it read-only here means a bug cannot change that.
+; CHANGE ME to the LIBRARY_PATH from .env. Note ProtectHome=yes hides /home
+; entirely; if the library lives under a home directory, set ProtectHome=no.
+ReadOnlyPaths=/srv/media/Music
+
+[Install]
+WantedBy=multi-user.target
