@@ -1,0 +1,5 @@
+# Runtime
+requests==2.34.2       # OpenAI-compatible HTTP client for the local vLLM endpoint
+
+# Development
+pytest==8.4.2          # regression tests for the ontology and scan state machine
