@@ -10,6 +10,13 @@
     --sap-danger: #ee3939;
     --sap-info: #0070f2;
     --sap-teal: #049f9a;
+
+    /* Label colour on top of an accent fill. White works on the purple
+       gradient; a bright accent needs a dark label instead. */
+    --theme-on-accent: #ffffff;
+    /* Light tint of the accent, for badge text on a tinted background. */
+    --theme-accent-soft: #a78bfa;
+    --theme-accent-code: #c084fc;
 }
 
 [data-bs-theme="dark"] {
@@ -24,6 +31,10 @@
 }
 
 [data-bs-theme="light"] {
+    /* The soft tint is a light colour for dark surfaces; on a
+       near-white badge it falls to 2.3:1. */
+    --theme-accent-soft: #4c1d95;
+    --theme-accent-code: #5b21b6;
     --theme-bg: #f8f9fa;
     --theme-surface: #ffffff;
     --theme-surface-solid: #f4f4f8;
@@ -34,6 +45,53 @@
     --theme-text-muted: #5b6f8b;
 }
 
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Teal accent — sampled from a leather reference photograph.
+
+   The image sits at a consistent 192-200° hue, from #557580 in its lit corner
+   to #2c404a in shadow. Those literal values are far too dim to be accents on
+   a near-black page (#557580 manages 4.1:1), so the hue is kept and the chroma
+   lifted.
+
+   Cyan cannot simply stand in for the purple: the purple held white text at
+   4.6:1 or better across its whole gradient, whereas a cyan bright enough to
+   carry on dark manages 1.9:1. So the accent keeps a luminous gradient and
+   takes a dark label instead — the leather's own shadow — reading 8.6 / 6.3 /
+   4.6:1 across the span.
+
+   Remove data-accent from <html> to fall back to the purple.
+   ─────────────────────────────────────────────────────────────────────────── */
+[data-accent="teal"] {
+    --theme-purple: #146078;
+    --theme-purple-rgb: 20, 96, 120;
+    --theme-magenta: #39cbef;
+    --theme-magenta-rgb: 57, 203, 239;
+    --theme-gradient: linear-gradient(135deg, #39cbef 0%, #1e97bf 100%);
+    --theme-gradient-diagonal: linear-gradient(135deg, #39cbef 0%, #1e97bf 100%);
+    --theme-on-accent: #08222c;
+    --theme-accent-soft: #7fd6f0;
+    --theme-accent-code: #6fcfe9;
+}
+
+[data-accent="teal"][data-bs-theme="dark"] {
+    /* Accent text needs the luminous end to carry on near-black. */
+    --theme-purple: #39cbef;
+    --theme-purple-rgb: 57, 203, 239;
+    --theme-border-bright: rgba(57, 203, 239, 0.35);
+    --theme-surface-solid: #0d1a20;
+    --theme-border: rgba(57, 203, 239, 0.10);
+}
+
+[data-accent="teal"][data-bs-theme="light"] {
+    /* 7.6:1 on the badge tint; the luminous end manages 1.4:1 here. */
+    --theme-purple: #146078;
+    --theme-purple-rgb: 20, 96, 120;
+    --theme-accent-soft: #0f4f63;
+    --theme-accent-code: #0f4f63;
+    --theme-border: rgba(20, 96, 120, 0.15);
+    --theme-border-bright: rgba(20, 96, 120, 0.40);
+}
 /* ─── Global ─── */
 body {
     background-color: var(--theme-bg) !important;
@@ -48,7 +106,7 @@ body {
     position: fixed;
     width: 700px; height: 700px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(93,54,255,0.18), transparent 70%);
+    background: radial-gradient(circle, rgba(var(--theme-purple-rgb), 0.18), transparent 70%);
     top: -200px; left: -200px;
     pointer-events: none;
     z-index: 0;
@@ -60,7 +118,7 @@ body {
     position: fixed;
     width: 500px; height: 500px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(204,0,220,0.12), transparent 70%);
+    background: radial-gradient(circle, rgba(var(--theme-magenta-rgb), 0.12), transparent 70%);
     top: 30vh; right: -150px;
     pointer-events: none;
     z-index: 0;
@@ -173,7 +231,7 @@ main { position: relative; }
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: radial-gradient(ellipse at 30% 50%, rgba(93, 54, 255, 0.3) 0%, transparent 70%);
+    background: radial-gradient(ellipse at 30% 50%, rgba(var(--theme-purple-rgb), 0.3) 0%, transparent 70%);
     pointer-events: none;
 }
 
@@ -204,8 +262,8 @@ main { position: relative; }
 
 /* ─── Featured Section ─── */
 .featured-section {
-    background: linear-gradient(135deg, rgba(93, 54, 255, 0.06) 0%, rgba(204, 0, 220, 0.06) 100%);
-    border: 1px solid rgba(93, 54, 255, 0.2);
+    background: linear-gradient(135deg, rgba(var(--theme-purple-rgb), 0.06) 0%, rgba(var(--theme-magenta-rgb), 0.06) 100%);
+    border: 1px solid rgba(var(--theme-purple-rgb), 0.2);
     border-radius: 1rem;
     padding: 1.5rem;
 }
@@ -295,7 +353,7 @@ main { position: relative; }
 
 .skill-card:hover {
     transform: translateY(-3px);
-    box-shadow: 0 8px 32px rgba(93, 54, 255, 0.18) !important;
+    box-shadow: 0 8px 32px rgba(var(--theme-purple-rgb), 0.18) !important;
     border-color: var(--theme-border-bright) !important;
 }
 
@@ -342,7 +400,7 @@ main { position: relative; }
     background-color: var(--theme-surface-light);
     padding: 0.125rem 0.375rem;
     border-radius: 0.25rem;
-    color: #c084fc;
+    color: var(--theme-accent-code);
 }
 
 .rendered-markdown table {
@@ -378,15 +436,15 @@ main { position: relative; }
 .btn-primary {
     background: var(--theme-gradient) !important;
     border: none !important;
-    color: #fff !important;
+    color: var(--theme-on-accent) !important;
     font-weight: 600;
-    box-shadow: 0 0 20px rgba(93,54,255,0.35);
+    box-shadow: 0 0 20px rgba(var(--theme-purple-rgb), 0.35);
     transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .btn-primary:hover {
     transform: scale(1.03);
-    box-shadow: 0 0 36px rgba(93,54,255,0.55) !important;
+    box-shadow: 0 0 36px rgba(var(--theme-purple-rgb), 0.55) !important;
 }
 
 .btn-outline-primary {
@@ -396,7 +454,7 @@ main { position: relative; }
 }
 
 .btn-outline-primary:hover {
-    background: rgba(93, 54, 255, 0.12) !important;
+    background: rgba(var(--theme-purple-rgb), 0.12) !important;
     border-color: var(--theme-purple) !important;
     color: var(--theme-purple) !important;
 }
@@ -425,12 +483,12 @@ main { position: relative; }
 .btn-warning {
     background: var(--theme-gradient) !important;
     border: none !important;
-    color: #fff !important;
+    color: var(--theme-on-accent) !important;
     font-weight: 600;
 }
 
 .btn-warning:hover {
-    box-shadow: 0 0 24px rgba(93,54,255,0.5);
+    box-shadow: 0 0 24px rgba(var(--theme-purple-rgb), 0.5);
 }
 
 /* ─── Forms ─── */
@@ -445,7 +503,7 @@ main { position: relative; }
 .form-control:focus,
 .form-select:focus {
     border-color: var(--theme-border-bright) !important;
-    box-shadow: 0 0 0 3px rgba(93, 54, 255, 0.18) !important;
+    box-shadow: 0 0 0 3px rgba(var(--theme-purple-rgb), 0.18) !important;
     background-color: var(--theme-surface-light) !important;
 }
 
@@ -465,15 +523,15 @@ main { position: relative; }
 
 /* ─── Alerts ─── */
 .alert-success {
-    background-color: rgba(93, 54, 255, 0.12) !important;
-    border-color: rgba(93, 54, 255, 0.3) !important;
+    background-color: rgba(var(--theme-purple-rgb), 0.12) !important;
+    border-color: rgba(var(--theme-purple-rgb), 0.3) !important;
     color: var(--theme-text) !important;
     border-radius: 12px !important;
 }
 
 .alert-info {
-    background-color: rgba(204, 0, 220, 0.12) !important;
-    border-color: rgba(204, 0, 220, 0.3) !important;
+    background-color: rgba(var(--theme-magenta-rgb), 0.12) !important;
+    border-color: rgba(var(--theme-magenta-rgb), 0.3) !important;
     color: var(--theme-text) !important;
     border-radius: 12px !important;
 }
@@ -493,7 +551,7 @@ main { position: relative; }
 .page-item.active .page-link {
     background: var(--theme-gradient) !important;
     border-color: transparent !important;
-    color: #fff !important;
+    color: var(--theme-on-accent) !important;
 }
 
 .page-item.disabled .page-link {
@@ -518,7 +576,7 @@ main { position: relative; }
 /* ─── Badge (Bootstrap) ─── */
 .badge.bg-warning {
     background: var(--theme-gradient) !important;
-    color: #fff !important;
+    color: var(--theme-on-accent) !important;
 }
 
 /* ─── Text utilities ─── */
@@ -619,9 +677,9 @@ hr,
 
 /* ─── Tag badges ─── */
 .tag-badge {
-    background-color: rgba(93, 54, 255, 0.12);
-    color: #a78bfa;
-    border: 1px solid rgba(93, 54, 255, 0.25);
+    background-color: rgba(var(--theme-purple-rgb), 0.12);
+    color: var(--theme-accent-soft);
+    border: 1px solid rgba(var(--theme-purple-rgb), 0.25);
     font-size: 0.72rem;
     font-weight: 500;
     padding: 0.2em 0.55em;
@@ -631,14 +689,14 @@ hr,
 
 .tag-badge:hover {
     background: var(--theme-gradient);
-    color: #fff !important;
+    color: var(--theme-on-accent) !important;
     border-color: transparent;
 }
 
 .tag-badge-active {
-    background: rgba(93, 54, 255, 0.2);
-    color: #a78bfa;
-    border: 1px solid rgba(93, 54, 255, 0.35);
+    background: rgba(var(--theme-purple-rgb), 0.2);
+    color: var(--theme-accent-soft);
+    border: 1px solid rgba(var(--theme-purple-rgb), 0.35);
     padding: 0.35em 0.75em;
     border-radius: 999px;
 }
@@ -733,7 +791,7 @@ hr,
 
 /* ─── Type badges ─── */
 .bg-purple-subtle {
-    background-color: rgba(93, 54, 255, 0.15) !important;
+    background-color: rgba(var(--theme-purple-rgb), 0.15) !important;
 }
 
 .text-purple {
@@ -855,7 +913,7 @@ hr,
 
 .badge-browse-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(93, 54, 255, 0.15) !important;
+    box-shadow: 0 8px 24px rgba(var(--theme-purple-rgb), 0.15) !important;
 }
 
 .badge-browse-card.badge-locked {
@@ -915,7 +973,7 @@ hr,
 .leaderboard-rank-1 { color: #ffd700; font-weight: bold; font-size: 1.2rem; }
 .leaderboard-rank-2 { color: #c0c0c0; font-weight: bold; font-size: 1.1rem; }
 .leaderboard-rank-3 { color: #cd7f32; font-weight: bold; font-size: 1.1rem; }
-.leaderboard-row-current { background: rgba(93, 54, 255, 0.08) !important; }
+.leaderboard-row-current { background: rgba(var(--theme-purple-rgb), 0.08) !important; }
 
 /* ─── Nav icons (legacy, kept for compat) ─── */
 .nav-icon {
@@ -954,7 +1012,7 @@ hr,
     height: 64px;
     margin: 0 auto 1.25rem;
     object-fit: contain;
-    filter: drop-shadow(0 0 24px rgba(93, 54, 255, 0.5));
+    filter: drop-shadow(0 0 24px rgba(var(--theme-purple-rgb), 0.5));
 }
 
 .hub-hero-eyebrow {
@@ -975,7 +1033,7 @@ hr,
     height: 7px;
     border-radius: 50%;
     background: var(--theme-gradient);
-    box-shadow: 0 0 8px rgba(93, 54, 255, 0.7);
+    box-shadow: 0 0 8px rgba(var(--theme-purple-rgb), 0.7);
     animation: pulse-dot 2s ease-in-out infinite;
 }
 
@@ -1051,7 +1109,7 @@ hr,
 
 .hub-search-bar:focus-within {
     border-color: var(--theme-purple);
-    box-shadow: 0 0 0 3px rgba(93, 54, 255, 0.18), 0 8px 32px rgba(93, 54, 255, 0.15);
+    box-shadow: 0 0 0 3px rgba(var(--theme-purple-rgb), 0.18), 0 8px 32px rgba(var(--theme-purple-rgb), 0.15);
 }
 
 .hub-search-icon {
@@ -1100,7 +1158,7 @@ hr,
     background: var(--theme-gradient);
     border: none;
     border-radius: 10px;
-    color: #fff;
+    color: var(--theme-on-accent);
     font-size: 0.875rem;
     font-weight: 600;
     padding: 0.55rem 1.25rem;
@@ -1110,7 +1168,7 @@ hr,
 }
 
 .hub-search-btn:hover {
-    box-shadow: 0 0 20px rgba(93, 54, 255, 0.5);
+    box-shadow: 0 0 20px rgba(var(--theme-purple-rgb), 0.5);
     transform: scale(1.02);
 }
 
@@ -1140,7 +1198,7 @@ hr,
 .hub-quick-card:hover {
     border-color: var(--theme-border-bright);
     transform: translateY(-2px);
-    box-shadow: 0 8px 28px rgba(93, 54, 255, 0.15);
+    box-shadow: 0 8px 28px rgba(var(--theme-purple-rgb), 0.15);
     color: var(--theme-text);
 }
 
@@ -1169,7 +1227,7 @@ hr,
     align-items: center;
     gap: 0.4rem;
     background: var(--theme-gradient);
-    color: #fff;
+    color: var(--theme-on-accent);
     font-weight: 600;
     font-size: 0.9rem;
     padding: 0.65rem 1.5rem;
@@ -1181,7 +1239,7 @@ hr,
 
 .hub-btn-primary:hover {
     color: #fff;
-    box-shadow: 0 0 28px rgba(93, 54, 255, 0.5);
+    box-shadow: 0 0 28px rgba(var(--theme-purple-rgb), 0.5);
     transform: scale(1.02);
 }
 
